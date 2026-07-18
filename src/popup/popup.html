@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>KIRO Recorder</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <div class="popup-container">
+    <!-- Header -->
+    <header class="popup-header">
+      <div class="logo-section">
+        <span class="logo-icon">&#9654;</span>
+        <h1>KIRO Recorder</h1>
+      </div>
+      <div class="header-actions">
+        <button id="btn-theme" class="icon-btn" title="Toggle Theme">&#9788;</button>
+        <button id="btn-dashboard" class="icon-btn" title="Open Dashboard">&#9776;</button>
+      </div>
+    </header>
+
+    <!-- Status Bar -->
+    <div class="status-bar">
+      <div class="status-indicator">
+        <span id="status-dot" class="dot idle"></span>
+        <span id="status-text">Idle</span>
+      </div>
+      <div class="timer" id="timer">00:00:00</div>
+    </div>
+
+    <!-- Info Panel -->
+    <div class="info-panel">
+      <div class="info-item">
+        <span class="info-label">Steps</span>
+        <span class="info-value" id="step-count">0</span>
+      </div>
+      <div class="info-item">
+        <span class="info-label">URL</span>
+        <span class="info-value url-text" id="current-url">-</span>
+      </div>
+      <div class="info-item">
+        <span class="info-label">Tab</span>
+        <span class="info-value" id="active-tab">-</span>
+      </div>
+    </div>
+
+    <!-- Recording Controls -->
+    <div class="controls">
+      <div class="controls-row primary-controls">
+        <button id="btn-start" class="ctrl-btn start-btn" title="Start Recording">
+          <span class="btn-icon">&#9899;</span> Start
+        </button>
+        <button id="btn-pause" class="ctrl-btn pause-btn" disabled title="Pause">
+          <span class="btn-icon">&#10074;&#10074;</span> Pause
+        </button>
+        <button id="btn-stop" class="ctrl-btn stop-btn" disabled title="Stop">
+          <span class="btn-icon">&#9632;</span> Stop
+        </button>
+      </div>
+      <div class="controls-row secondary-controls">
+        <button id="btn-save" class="ctrl-btn" disabled title="Save Recording">
+          &#128190; Save
+        </button>
+        <button id="btn-export" class="ctrl-btn" disabled title="Export">
+          &#128228; Export
+        </button>
+        <button id="btn-clear" class="ctrl-btn" disabled title="Clear">
+          &#128465; Clear
+        </button>
+      </div>
+    </div>
+
+    <!-- Recent Events Preview -->
+    <div class="events-preview">
+      <h3>Recent Steps</h3>
+      <ul id="events-list" class="events-list">
+        <li class="empty-state">No events recorded yet</li>
+      </ul>
+    </div>
+
+    <!-- Footer -->
+    <footer class="popup-footer">
+      <span>v1.0.0</span>
+      <a href="#" id="btn-settings">Settings</a>
+    </footer>
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+</html>

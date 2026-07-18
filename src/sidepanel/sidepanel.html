@@ -1,0 +1,243 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>KIRO Dashboard</title>
+  <link rel="stylesheet" href="sidepanel.css">
+</head>
+<body>
+  <div class="dashboard">
+    <!-- Sidebar Navigation -->
+    <nav class="sidebar">
+      <div class="sidebar-logo">
+        <span class="logo-icon">&#9654;</span>
+        <span class="logo-text">KIRO</span>
+      </div>
+      <ul class="nav-items">
+        <li class="nav-item active" data-view="timeline">
+          <span class="nav-icon">&#128339;</span>
+          <span>Timeline</span>
+        </li>
+        <li class="nav-item" data-view="recordings">
+          <span class="nav-icon">&#128193;</span>
+          <span>Recordings</span>
+        </li>
+        <li class="nav-item" data-view="network">
+          <span class="nav-icon">&#127760;</span>
+          <span>Network</span>
+        </li>
+        <li class="nav-item" data-view="console">
+          <span class="nav-icon">&#128187;</span>
+          <span>Console</span>
+        </li>
+        <li class="nav-item" data-view="export">
+          <span class="nav-icon">&#128228;</span>
+          <span>Export</span>
+        </li>
+        <li class="nav-item" data-view="ai">
+          <span class="nav-icon">&#129302;</span>
+          <span>AI Generate</span>
+        </li>
+        <li class="nav-item" data-view="settings">
+          <span class="nav-icon">&#9881;</span>
+          <span>Settings</span>
+        </li>
+      </ul>
+    </nav>
+
+    <!-- Main Content -->
+    <main class="main-content">
+      <!-- Search and Filter Bar -->
+      <div class="toolbar">
+        <input type="text" id="search-input" class="search-bar"
+               placeholder="Search events..." />
+        <select id="filter-type" class="filter-select">
+          <option value="all">All Events</option>
+          <option value="click">Clicks</option>
+          <option value="type">Typing</option>
+          <option value="navigation">Navigation</option>
+          <option value="submit">Form Submit</option>
+          <option value="select">Dropdown</option>
+        </select>
+      </div>
+
+      <!-- Timeline View -->
+      <section id="view-timeline" class="view active">
+        <h2>Event Timeline</h2>
+        <div class="timeline-stats">
+          <div class="stat-card">
+            <span class="stat-value" id="stat-total">0</span>
+            <span class="stat-label">Total Steps</span>
+          </div>
+          <div class="stat-card">
+            <span class="stat-value" id="stat-duration">00:00</span>
+            <span class="stat-label">Duration</span>
+          </div>
+          <div class="stat-card">
+            <span class="stat-value" id="stat-pages">0</span>
+            <span class="stat-label">Pages</span>
+          </div>
+        </div>
+        <div class="timeline-list" id="timeline-list">
+          <div class="empty-state">
+            <p>No events recorded yet.</p>
+            <p>Start recording from the popup to see events here.</p>
+          </div>
+        </div>
+      </section>
+
+      <!-- Recordings View -->
+      <section id="view-recordings" class="view">
+        <h2>Saved Recordings</h2>
+        <div class="recordings-list" id="recordings-list">
+          <div class="empty-state">No saved recordings.</div>
+        </div>
+      </section>
+
+      <!-- Network View -->
+      <section id="view-network" class="view">
+        <h2>Network Activity</h2>
+        <div class="network-list" id="network-list">
+          <div class="empty-state">No network activity captured.</div>
+        </div>
+      </section>
+
+      <!-- Console View -->
+      <section id="view-console" class="view">
+        <h2>Console Logs</h2>
+        <div class="console-list" id="console-list">
+          <div class="empty-state">No console errors captured.</div>
+        </div>
+      </section>
+
+      <!-- Export View -->
+      <section id="view-export" class="view">
+        <h2>Export Recording</h2>
+        <div class="export-options">
+          <button class="export-btn" data-format="selenium-pom">
+            <span class="export-icon">&#9749;</span>
+            <span>Selenium POM</span>
+          </button>
+          <button class="export-btn" data-format="playwright-pom">
+            <span class="export-icon">&#127917;</span>
+            <span>Playwright POM</span>
+          </button>
+          <button class="export-btn" data-format="selenium">
+            <span class="export-icon">&#9749;</span>
+            <span>Selenium Java</span>
+          </button>
+          <button class="export-btn" data-format="playwright">
+            <span class="export-icon">&#127917;</span>
+            <span>Playwright</span>
+          </button>
+          <button class="export-btn" data-format="cypress">
+            <span class="export-icon">&#127795;</span>
+            <span>Cypress</span>
+          </button>
+          <button class="export-btn" data-format="robot">
+            <span class="export-icon">&#129302;</span>
+            <span>Robot Framework</span>
+          </button>
+          <button class="export-btn" data-format="json">
+            <span class="export-icon">&#128196;</span>
+            <span>JSON</span>
+          </button>
+          <button class="export-btn" data-format="csv">
+            <span class="export-icon">&#128202;</span>
+            <span>CSV</span>
+          </button>
+        </div>
+        <div class="export-preview">
+          <h3>Preview</h3>
+          <pre id="export-preview-code"></pre>
+        </div>
+      </section>
+
+      <!-- AI View -->
+      <section id="view-ai" class="view">
+        <h2>AI Test Generation</h2>
+        <div class="ai-controls">
+          <select id="ai-format" class="filter-select">
+            <option value="manual">Manual Test Cases</option>
+            <option value="gherkin">Gherkin / BDD</option>
+            <option value="selenium">Selenium Java</option>
+            <option value="playwright">Playwright</option>
+            <option value="cypress">Cypress</option>
+          </select>
+          <button id="btn-ai-generate" class="primary-btn">Generate with AI</button>
+        </div>
+        <div class="ai-output" id="ai-output">
+          <div class="empty-state">
+            Configure your AI endpoint in Settings, then generate test scripts.
+          </div>
+        </div>
+      </section>
+
+      <!-- Settings View -->
+      <section id="view-settings" class="view">
+        <h2>Settings</h2>
+        <div class="settings-form">
+          <div class="setting-group">
+            <h3>Recording</h3>
+            <label class="setting-row">
+              <span>Enable Screenshots</span>
+              <input type="checkbox" id="set-screenshots" checked />
+            </label>
+            <label class="setting-row">
+              <span>Screenshot Quality</span>
+              <input type="range" id="set-quality" min="20" max="100" value="80" />
+            </label>
+            <label class="setting-row">
+              <span>Network Monitoring</span>
+              <input type="checkbox" id="set-network" checked />
+            </label>
+            <label class="setting-row">
+              <span>Console Monitoring</span>
+              <input type="checkbox" id="set-console" checked />
+            </label>
+            <label class="setting-row">
+              <span>Auto Save</span>
+              <input type="checkbox" id="set-autosave" checked />
+            </label>
+          </div>
+          <div class="setting-group">
+            <h3>AI Configuration</h3>
+            <label class="setting-row">
+              <span>AI Endpoint URL</span>
+              <input type="url" id="set-ai-endpoint" placeholder="https://api.example.com/generate" />
+            </label>
+            <label class="setting-row">
+              <span>API Key</span>
+              <input type="password" id="set-ai-key" placeholder="Your API key" />
+            </label>
+          </div>
+          <div class="setting-group">
+            <h3>Appearance</h3>
+            <label class="setting-row">
+              <span>Theme</span>
+              <select id="set-theme">
+                <option value="dark">Dark</option>
+                <option value="light">Light</option>
+              </select>
+            </label>
+            <label class="setting-row">
+              <span>Default Export Format</span>
+              <select id="set-export-format">
+                <option value="json">JSON</option>
+                <option value="selenium">Selenium Java</option>
+                <option value="playwright">Playwright</option>
+                <option value="cypress">Cypress</option>
+                <option value="csv">CSV</option>
+              </select>
+            </label>
+          </div>
+          <button id="btn-save-settings" class="primary-btn">Save Settings</button>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <script src="sidepanel.js"></script>
+</body>
+</html>

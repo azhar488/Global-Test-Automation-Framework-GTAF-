@@ -1,0 +1,12 @@
+/* KIRO Recorder - Content Script Styles */
+
+#kiro-recording-indicator {
+  pointer-events: none;
+  user-select: none;
+}
+
+/* Highlight element on hover during recording */
+[data-kiro-highlight] {
+  outline: 2px dashed #e94560 !important;
+  outline-offset: 2px !important;
+}
