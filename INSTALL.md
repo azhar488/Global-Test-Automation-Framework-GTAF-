@@ -224,7 +224,7 @@ Every event is stored as a structured JSON object:
 | tabs | Track tab switches and navigation events |
 | storage | Save recordings and settings locally |
 | scripting | Inject content scripts for event recording |
-| webNavigation | Track page loads and URL changes |
+| webNavigation | Track page loads and URL change |
 | debugger | Advanced network monitoring |
 | downloads | Export recordings as files |
 | sidePanel | Provide full dashboard interface |
