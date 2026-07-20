@@ -6,7 +6,7 @@
 
 KIRO Recorder is an AI-powered test automation platform designed to simplify and accelerate end-to-end test automation. It enables users to record browser interactions, enhance test flows using natural language, and automatically generate maintainable automation frameworks.
 
-Unlike traditional recorders that generate static scripts, KIRO focuses on understanding user intent and converting it into intelligent, reusable automation.
+Unlike traditional recorders that generate static scripts, KIRO Recorder focuses on understanding user intent and converting it into intelligent, reusable automation.
 
 ---
 
