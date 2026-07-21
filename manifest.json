@@ -25,6 +25,7 @@
       "matches": ["<all_urls>"],
       "js": [
         "src/content/locator-engine.js",
+        "src/content/pattern-detector.js",
         "src/content/event-recorder.js",
         "src/content/content-script.js"
       ],

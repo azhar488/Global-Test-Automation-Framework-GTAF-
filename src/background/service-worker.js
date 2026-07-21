@@ -50,6 +50,23 @@ async function handleMessage(message, sender) {
       return { success: true, logs: networkMonitor.getLogs() };
     case 'EXPORT_RECORDING':
       return await exportRecording();
+
+    // ─── Control Flow Messages ───────────────────────────────────────────
+    case 'START_CONDITION':
+      return startControlFlowBlock('condition', payload);
+    case 'START_LOOP':
+      return startControlFlowBlock('loop', payload);
+    case 'START_TABLE_SELECT':
+      return startControlFlowBlock('tableSelect', payload);
+    case 'SWITCH_BRANCH':
+      return switchControlFlowBranch(payload);
+    case 'END_BLOCK':
+      return endControlFlowBlock();
+    case 'UPDATE_BLOCK_CONFIG':
+      return updateBlockConfig(payload);
+    case 'GET_CONTROL_FLOW_STATE':
+      return { success: true, controlFlow: recordingState.getControlFlowState() };
+
     case 'GET_SETTINGS':
       return await storageManager.getSettings();
     case 'SAVE_SETTINGS':
@@ -60,6 +77,8 @@ async function handleMessage(message, sender) {
       return await storageManager.getProjects();
     case 'DELETE_PROJECT':
       return await storageManager.deleteProject(payload.id);
+    case 'REORDER_EVENTS':
+      return reorderEvents(payload);
     default:
       return { success: false, error: 'Unknown message type: ' + type };
   }
@@ -165,6 +184,137 @@ async function recordEvent(eventData, sender) {
   return { success: true, event: enrichedEvent };
 }
 
+// ─── Reorder Events ────────────────────────────────────────────────────────────
+
+function reorderEvents(payload) {
+  if (!payload || !payload.events) {
+    return { success: false, error: 'No events provided' };
+  }
+  // Replace the events array with the reordered one
+  recordingState.state.events = payload.events;
+  // Re-number steps
+  recordingState.state.events.forEach((e, i) => {
+    e.stepNumber = i + 1;
+  });
+  return { success: true };
+}
+
+// ─── Control Flow ──────────────────────────────────────────────────────────────
+
+function startControlFlowBlock(blockType, config) {
+  if (!recordingState.isRecording()) {
+    return { success: false, error: 'Not recording' };
+  }
+
+  let block;
+  switch (blockType) {
+    case 'condition':
+      block = recordingState.startCondition(config || {});
+      break;
+    case 'loop':
+      block = recordingState.startLoop(config || {});
+      break;
+    case 'tableSelect':
+      block = recordingState.startTableSelect(config || {});
+      break;
+    default:
+      return { success: false, error: 'Unknown block type: ' + blockType };
+  }
+
+  // Notify sidepanel/popup of control flow state change
+  chrome.runtime.sendMessage({
+    type: 'CONTROL_FLOW_CHANGED',
+    payload: recordingState.getControlFlowState(),
+  }).catch(() => {});
+
+  // Notify content scripts to adjust recording behavior
+  broadcastToContentScripts({
+    type: 'CONTROL_FLOW_MODE',
+    payload: {
+      mode: recordingState.controlFlowMode,
+      blockType,
+      blockId: block.id,
+    },
+  });
+
+  return { success: true, block, controlFlow: recordingState.getControlFlowState() };
+}
+
+function switchControlFlowBranch(payload) {
+  if (!recordingState.isInControlFlow()) {
+    return { success: false, error: 'Not in a control flow block' };
+  }
+
+  const branchName = payload.branch || payload.branchName;
+  const result = recordingState.switchBranch(branchName);
+
+  if (!result) {
+    return { success: false, error: 'Invalid branch: ' + branchName };
+  }
+
+  // Notify sidepanel/popup
+  chrome.runtime.sendMessage({
+    type: 'CONTROL_FLOW_CHANGED',
+    payload: recordingState.getControlFlowState(),
+  }).catch(() => {});
+
+  // Notify content scripts
+  broadcastToContentScripts({
+    type: 'CONTROL_FLOW_MODE',
+    payload: {
+      mode: recordingState.controlFlowMode,
+      blockType: recordingState.getCurrentBlock().blockType,
+      blockId: recordingState.getCurrentBlock().id,
+    },
+  });
+
+  return { success: true, controlFlow: recordingState.getControlFlowState() };
+}
+
+function endControlFlowBlock() {
+  if (!recordingState.isInControlFlow()) {
+    return { success: false, error: 'Not in a control flow block' };
+  }
+
+  const completedBlock = recordingState.endBlock();
+
+  // Notify sidepanel/popup
+  chrome.runtime.sendMessage({
+    type: 'CONTROL_FLOW_CHANGED',
+    payload: recordingState.getControlFlowState(),
+  }).catch(() => {});
+
+  chrome.runtime.sendMessage({
+    type: 'BLOCK_COMPLETED',
+    payload: completedBlock,
+  }).catch(() => {});
+
+  // Notify content scripts
+  broadcastToContentScripts({
+    type: 'CONTROL_FLOW_MODE',
+    payload: {
+      mode: recordingState.controlFlowMode,
+      blockType: recordingState.getCurrentBlock()?.blockType || null,
+      blockId: recordingState.getCurrentBlock()?.id || null,
+    },
+  });
+
+  return { success: true, block: completedBlock, controlFlow: recordingState.getControlFlowState() };
+}
+
+function updateBlockConfig(payload) {
+  if (!recordingState.isInControlFlow()) {
+    return { success: false, error: 'Not in a control flow block' };
+  }
+
+  const result = recordingState.updateBlockConfig(payload);
+  if (!result) {
+    return { success: false, error: 'Failed to update block config' };
+  }
+
+  return { success: true, controlFlow: recordingState.getControlFlowState() };
+}
+
 // ─── Export ────────────────────────────────────────────────────────────────────
 
 async function exportRecording() {
@@ -222,7 +372,7 @@ async function injectIntoAllFrames() {
     // Inject content scripts into ALL frames of the active tab
     await chrome.scripting.executeScript({
       target: { tabId: tab.id, allFrames: true },
-      files: ['src/content/locator-engine.js', 'src/content/event-recorder.js', 'src/content/content-script.js'],
+      files: ['src/content/locator-engine.js', 'src/content/pattern-detector.js', 'src/content/event-recorder.js', 'src/content/content-script.js'],
     });
   } catch (e) {
     // Some frames may reject injection (chrome:// etc.) - that's fine

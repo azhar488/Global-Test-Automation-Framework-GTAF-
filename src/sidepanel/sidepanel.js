@@ -5,6 +5,7 @@
 class DashboardController {
   constructor() {
     this.events = [];
+    this.activeBlockId = null; // ID of the block currently capturing steps
     this.initNavigation();
     this.initExport();
     this.initAI();
@@ -75,7 +76,13 @@ class DashboardController {
       return;
     }
     list.innerHTML = '';
-    events.forEach((evt) => this.addTimelineItem(evt));
+    events.forEach((evt) => {
+      if (evt.type === 'block') {
+        this.addBlockToTimeline(evt, true);
+      } else {
+        this.addTimelineItem(evt);
+      }
+    });
   }
 
   addTimelineItem(evt) {
@@ -93,14 +100,271 @@ class DashboardController {
       + '<div class="timeline-details"><span class="timeline-type">' + evt.eventType + '</span>'
       + '<span class="timeline-target">' + target + '</span></div>'
       + '<span class="timeline-time">' + time + '</span>'
-      + '<button class="delete-step-btn" title="Delete this step">&#128465;</button>';
+      + '<div class="step-actions">'
+      + '<button class="insert-block-btn" title="Insert If/Loop/Table here">&#10010;</button>'
+      + '<button class="move-step-btn move-up-btn" title="Move up">&#9650;</button>'
+      + '<button class="move-step-btn move-down-btn" title="Move down">&#9660;</button>'
+      + '<button class="delete-step-btn" title="Delete this step">&#128465;</button>'
+      + '</div>';
     // Attach delete handler
     item.querySelector('.delete-step-btn').addEventListener('click', (e) => {
       e.stopPropagation();
       this.deleteEvent(evt.id || evt.timestamp, item);
     });
+    // Attach move up handler
+    item.querySelector('.move-up-btn').addEventListener('click', (e) => {
+      e.stopPropagation();
+      this.moveEvent(evt.id || evt.timestamp, 'up');
+    });
+    // Attach move down handler
+    item.querySelector('.move-down-btn').addEventListener('click', (e) => {
+      e.stopPropagation();
+      this.moveEvent(evt.id || evt.timestamp, 'down');
+    });
+    // Attach insert block handler
+    item.querySelector('.insert-block-btn').addEventListener('click', (e) => {
+      e.stopPropagation();
+      this.showInsertMenu(evt.id || evt.timestamp, item);
+    });
     list.appendChild(item);
     list.scrollTop = list.scrollHeight;
+  }
+
+  showInsertMenu(afterEventId, itemElement) {
+    // Remove any existing insert menu
+    const existing = document.querySelector('.insert-block-menu');
+    if (existing) existing.remove();
+
+    const menu = document.createElement('div');
+    menu.className = 'insert-block-menu';
+    menu.innerHTML = `
+      <span class="insert-menu-label">Insert after this step:</span>
+      <button class="insert-menu-item insert-condition" data-type="condition">&#9888; If / Else</button>
+      <button class="insert-menu-item insert-loop" data-type="loop">&#128260; Loop</button>
+      <button class="insert-menu-item insert-table" data-type="tableSelect">&#128203; Table Select</button>
+      <button class="insert-menu-item insert-cancel">Cancel</button>
+    `;
+
+    menu.querySelector('.insert-condition').addEventListener('click', () => {
+      menu.remove();
+      this.showInlineConditionForm(afterEventId, itemElement);
+    });
+    menu.querySelector('.insert-loop').addEventListener('click', () => {
+      menu.remove();
+      this.insertBlockAt(afterEventId, 'loop');
+    });
+    menu.querySelector('.insert-table').addEventListener('click', () => {
+      menu.remove();
+      this.insertBlockAt(afterEventId, 'tableSelect');
+    });
+    menu.querySelector('.insert-cancel').addEventListener('click', () => {
+      menu.remove();
+    });
+
+    // Insert menu after the clicked item
+    itemElement.after(menu);
+  }
+
+  showInlineConditionForm(afterEventId, itemElement) {
+    // Remove any existing form
+    const existing = document.querySelector('.inline-condition-form');
+    if (existing) existing.remove();
+
+    const form = document.createElement('div');
+    form.className = 'inline-condition-form';
+    form.innerHTML = `
+      <div class="icf-header">Add Control Statement</div>
+      <div class="icf-statement-row">
+        <label class="icf-label">Statement type:</label>
+        <select class="icf-select" id="icf-statement">
+          <option value="if">if  {</option>
+          <option value="elseif">} else if  {</option>
+          <option value="else">} else  {</option>
+          <option value="close">}  (close statement)</option>
+        </select>
+      </div>
+      <div class="icf-condition-fields" id="icf-condition-fields">
+        <div class="icf-type-row">
+          <label class="icf-label">Condition type:</label>
+          <select class="icf-select" id="icf-type">
+            <option value="dataDriven">Data Driven (Excel/variable)</option>
+            <option value="elementExists">Element exists on page</option>
+            <option value="elementVisible">Element is visible</option>
+            <option value="textContains">Element text contains</option>
+          </select>
+        </div>
+        <div class="icf-data-driven-row" id="icf-data-driven-row">
+          <div class="icf-field">
+            <label class="icf-label">Variable name:</label>
+            <input type="text" class="icf-input" id="icf-variable" placeholder="e.g. title, status, category" />
+          </div>
+          <div class="icf-field">
+            <label class="icf-label">Operator:</label>
+            <select class="icf-select" id="icf-operator">
+              <option value="==">equals (==)</option>
+              <option value="!=">not equals (!=)</option>
+              <option value="contains">contains</option>
+              <option value="startsWith">starts with</option>
+            </select>
+          </div>
+          <div class="icf-field">
+            <label class="icf-label">Expected value:</label>
+            <input type="text" class="icf-input" id="icf-value" placeholder="e.g. MR, Pending, Active" />
+          </div>
+        </div>
+        <div class="icf-element-row" id="icf-element-row" style="display:none;">
+          <div class="icf-field">
+            <label class="icf-label">Element locator:</label>
+            <input type="text" class="icf-input" id="icf-locator" placeholder="//button[@id='submit']" />
+          </div>
+          <div class="icf-field" id="icf-text-value-field" style="display:none;">
+            <label class="icf-label">Text value:</label>
+            <input type="text" class="icf-input" id="icf-text-value" placeholder="Expected text" />
+          </div>
+        </div>
+      </div>
+      <div class="icf-actions">
+        <button class="primary-btn icf-add-btn" id="icf-add-btn">Add Statement</button>
+        <button class="secondary-btn icf-cancel-btn" id="icf-cancel-btn">Cancel</button>
+      </div>
+    `;
+
+    // Toggle condition fields based on statement type
+    const statementSelect = form.querySelector('#icf-statement');
+    const conditionFields = form.querySelector('#icf-condition-fields');
+
+    statementSelect.addEventListener('change', () => {
+      if (statementSelect.value === 'else' || statementSelect.value === 'close') {
+        conditionFields.style.display = 'none';
+      } else {
+        conditionFields.style.display = 'block';
+      }
+    });
+
+    // Toggle between data-driven and element-based
+    const typeSelect = form.querySelector('#icf-type');
+    const dataDrivenRow = form.querySelector('#icf-data-driven-row');
+    const elementRow = form.querySelector('#icf-element-row');
+    const textValueField = form.querySelector('#icf-text-value-field');
+
+    typeSelect.addEventListener('change', () => {
+      if (typeSelect.value === 'dataDriven') {
+        dataDrivenRow.style.display = 'block';
+        elementRow.style.display = 'none';
+      } else {
+        dataDrivenRow.style.display = 'none';
+        elementRow.style.display = 'block';
+        textValueField.style.display = typeSelect.value === 'textContains' ? 'block' : 'none';
+      }
+    });
+
+    // Add button
+    form.querySelector('#icf-add-btn').addEventListener('click', () => {
+      this.createConditionBlock(afterEventId, form);
+    });
+
+    // Cancel
+    form.querySelector('#icf-cancel-btn').addEventListener('click', () => {
+      form.remove();
+    });
+
+    itemElement.after(form);
+  }
+
+  createConditionBlock(afterEventId, formElement) {
+    const statement = formElement.querySelector('#icf-statement').value;
+    const type = formElement.querySelector('#icf-type').value;
+    const variable = formElement.querySelector('#icf-variable').value.trim();
+    const operator = formElement.querySelector('#icf-operator').value;
+    const value = formElement.querySelector('#icf-value').value.trim();
+    const locator = formElement.querySelector('#icf-locator').value.trim();
+    const textValue = formElement.querySelector('#icf-text-value').value.trim();
+
+    // Validation — skip for 'else' and 'close' since they have no condition
+    if (statement !== 'else' && statement !== 'close') {
+      if (type === 'dataDriven' && (!variable || !value)) {
+        alert('Please provide both variable name and expected value.');
+        return;
+      }
+      if (type !== 'dataDriven' && !locator) {
+        alert('Please provide an element locator.');
+        return;
+      }
+    }
+
+    // Build the block/marker
+    const block = {
+      id: 'block_' + Date.now() + '_' + Math.random().toString(36).substr(2, 6),
+      type: 'block',
+      blockType: 'condition',
+      config: {
+        statement: statement, // 'if' | 'elseif' | 'else' | 'close'
+        conditionType: (statement === 'else' || statement === 'close') ? statement : type,
+        variable: variable,
+        operator: operator,
+        value: value,
+        locator: locator,
+        textValue: textValue,
+        check: (statement === 'else' || statement === 'close') ? statement : (type === 'dataDriven' ? 'dataDriven' : type),
+      },
+      branches: {
+        then: [],
+        else: [],
+      },
+      timestamp: Date.now(),
+    };
+
+    // Insert at position
+    const idx = this.events.findIndex(e => (e.id || e.timestamp) === afterEventId);
+    if (idx !== -1) {
+      this.events.splice(idx + 1, 0, block);
+    } else {
+      this.events.push(block);
+    }
+
+    // Sync to service worker
+    this.sendMessage('REORDER_EVENTS', { events: this.events });
+
+    // Remove form and re-render
+    formElement.remove();
+    this.renderTimeline(this.events);
+    this.updateStats();
+  }
+
+  closeActiveBlock() {
+    this.activeBlockId = null;
+    this.renderTimeline(this.events);
+  }
+
+  insertBlockAt(afterEventId, blockType) {
+    // Store the target position for when the block is completed
+    this._insertAfterEventId = afterEventId;
+
+    // Trigger the appropriate wizard
+    if (window.controlFlowCtrl) {
+      window.controlFlowCtrl.ensureRecording().then(ok => {
+        if (ok) window.controlFlowCtrl.showWizard(blockType === 'tableSelect' ? 'table' : blockType);
+      });
+    }
+  }
+
+  moveEvent(eventId, direction) {
+    const index = this.events.findIndex((e) => (e.id || e.timestamp) === eventId);
+    if (index === -1) return;
+
+    const targetIndex = direction === 'up' ? index - 1 : index + 1;
+    if (targetIndex < 0 || targetIndex >= this.events.length) return;
+
+    // Swap in the data array
+    const temp = this.events[index];
+    this.events[index] = this.events[targetIndex];
+    this.events[targetIndex] = temp;
+
+    // Re-render the timeline
+    this.renderTimeline(this.events);
+
+    // Also update the service worker's events array
+    this.sendMessage('REORDER_EVENTS', { events: this.events });
   }
 
   deleteEvent(eventId, itemElement) {
@@ -200,73 +464,457 @@ class DashboardController {
   }
 
   toSelenium() {
-    let c = 'import org.openqa.selenium.*;\nimport org.openqa.selenium.chrome.ChromeDriver;\n\n';
+    let c = 'import org.openqa.selenium.*;\nimport org.openqa.selenium.chrome.ChromeDriver;\nimport java.util.List;\n\n';
     c += 'public class KiroTest {\n  public static void main(String[] args) {\n';
     c += '    WebDriver driver = new ChromeDriver();\n';
+    var indentLevel = 1;
     this.events.forEach((e) => {
-      const loc = e.locators && e.locators.recommended;
-      if (!loc) return;
-      const by = loc.strategy === 'id' ? 'By.id("' + loc.value + '")' :
-        loc.strategy === 'name' ? 'By.name("' + loc.value + '")' :
-        loc.strategy === 'css' ? 'By.cssSelector("' + loc.value + '")' :
-        'By.xpath("' + loc.value + '")';
-      if (e.eventType === 'click') c += '    driver.findElement(' + by + ').click();\n';
-      else if (e.eventType === 'type') c += '    driver.findElement(' + by + ').sendKeys("' + (e.value || '') + '");\n';
-      else if (e.eventType === 'keypress') c += '    driver.findElement(' + by + ').sendKeys(Keys.' + (e.key || '').toUpperCase() + ');\n';
-      else if (e.eventType === 'shortcut') c += '    // Keyboard shortcut: ' + (e.combination || '') + '\n';
-      else if (e.eventType === 'navigation') c += '    driver.get("' + e.tabUrl + '");\n';
+      if (e.type === 'block' && e.blockType === 'condition') {
+        const stmt = e.config.statement || 'if';
+        if (stmt === 'close') {
+          indentLevel--;
+          c += '    '.repeat(indentLevel) + '}\n';
+        } else if (stmt === 'else') {
+          indentLevel--;
+          c += '    '.repeat(indentLevel) + '} else {\n';
+          indentLevel++;
+        } else if (stmt === 'elseif') {
+          indentLevel--;
+          c += '    '.repeat(indentLevel) + '} else if (' + this.buildJavaCondition(e.config) + ') {\n';
+          indentLevel++;
+        } else {
+          c += '    '.repeat(indentLevel) + 'if (' + this.buildJavaCondition(e.config) + ') {\n';
+          indentLevel++;
+        }
+      } else {
+        c += this.renderEventSelenium(e, '    '.repeat(indentLevel));
+      }
     });
     c += '    driver.quit();\n  }\n}';
     return c;
   }
 
+  renderEventSelenium(e, indent) {
+    if (e.type === 'block') return this.renderBlockSelenium(e, indent);
+    let c = '';
+    const loc = e.locators && e.locators.recommended;
+    if (!loc && e.eventType !== 'navigation') return '';
+    const by = loc ? (loc.strategy === 'id' ? 'By.id("' + loc.value + '")' :
+      loc.strategy === 'name' ? 'By.name("' + loc.value + '")' :
+      loc.strategy === 'css' ? 'By.cssSelector("' + loc.value + '")' :
+      'By.xpath("' + loc.value + '")') : '';
+    if (e.eventType === 'click') c = indent + 'driver.findElement(' + by + ').click();\n';
+    else if (e.eventType === 'type') c = indent + 'driver.findElement(' + by + ').sendKeys("' + (e.value || '') + '");\n';
+    else if (e.eventType === 'keypress') c = indent + 'driver.findElement(' + by + ').sendKeys(Keys.' + (e.key || '').toUpperCase() + ');\n';
+    else if (e.eventType === 'shortcut') c = indent + '// Shortcut: ' + (e.combination || '') + '\n';
+    else if (e.eventType === 'navigation') c = indent + 'driver.get("' + (e.tabUrl || e.url) + '");\n';
+    return c;
+  }
+
+  renderBlockSelenium(block, indent) {
+    let c = '';
+    const cfg = block.config;
+    if (block.blockType === 'condition') {
+      const statement = cfg.statement || 'if';
+
+      if (statement === 'close') {
+        // Close bracket
+        c += indent + '}\n';
+      } else if (statement === 'else') {
+        // else with no condition
+        c += indent + '} else {\n';
+      } else if (statement === 'elseif') {
+        // else if with condition
+        if (cfg.conditionType === 'dataDriven' || cfg.check === 'dataDriven') {
+          const varName = cfg.variable || 'variable';
+          const op = cfg.operator || '==';
+          const val = cfg.value || '';
+          let condExpr = '';
+          if (op === '==' || op === 'equals') condExpr = 'data.get("' + varName + '").equals("' + val + '")';
+          else if (op === '!=' || op === 'notEquals') condExpr = '!data.get("' + varName + '").equals("' + val + '")';
+          else if (op === 'contains') condExpr = 'data.get("' + varName + '").contains("' + val + '")';
+          else if (op === 'startsWith') condExpr = 'data.get("' + varName + '").startsWith("' + val + '")';
+          else condExpr = 'data.get("' + varName + '").equals("' + val + '")';
+          c += indent + '} else if (' + condExpr + ') {\n';
+        } else {
+          c += indent + '} else if (driver.findElements(By.xpath("' + (cfg.locator || '') + '")).size() > 0) {\n';
+        }
+      } else {
+        // if with condition
+        if (cfg.conditionType === 'dataDriven' || cfg.check === 'dataDriven') {
+          const varName = cfg.variable || 'variable';
+          const op = cfg.operator || '==';
+          const val = cfg.value || '';
+          let condExpr = '';
+          if (op === '==' || op === 'equals') condExpr = 'data.get("' + varName + '").equals("' + val + '")';
+          else if (op === '!=' || op === 'notEquals') condExpr = '!data.get("' + varName + '").equals("' + val + '")';
+          else if (op === 'contains') condExpr = 'data.get("' + varName + '").contains("' + val + '")';
+          else if (op === 'startsWith') condExpr = 'data.get("' + varName + '").startsWith("' + val + '")';
+          else condExpr = 'data.get("' + varName + '").equals("' + val + '")';
+          c += indent + 'if (' + condExpr + ') {\n';
+        } else {
+          if (cfg.check === 'textContains') {
+            c += indent + 'if (driver.findElement(By.xpath("' + cfg.locator + '")).getText().contains("' + (cfg.textValue || cfg.value || '') + '")) {\n';
+          } else {
+            c += indent + 'if (driver.findElements(By.xpath("' + (cfg.locator || '') + '")).size() > 0) {\n';
+          }
+        }
+      }
+    } else if (block.blockType === 'loop') {
+      const itemPath = cfg.container + '/' + (cfg.itemLocator || '*').replace(/^\.\//, '');
+      c += indent + '// LOOP: ' + (cfg.loopType || 'findMatch') + '\n';
+      if (cfg.loopType === 'repeatN') {
+        c += indent + 'for (int i = 0; i < ' + (cfg.count || 5) + '; i++) {\n';
+        (block.branches.body || []).forEach(s => { c += this.renderEventSelenium(s, indent + '    '); });
+        c += indent + '}\n';
+      } else {
+        c += indent + 'List<WebElement> items = driver.findElements(By.xpath("' + itemPath + '"));\n';
+        c += indent + 'for (WebElement item : items) {\n';
+        if (cfg.match && cfg.match.value) {
+          const op = this.getJavaCompare(cfg.match.operator, 'text', cfg.match.value);
+          c += indent + '    String text = item.findElement(By.xpath("' + (cfg.match.elementLocator || '.') + '")).getText();\n';
+          c += indent + '    if (' + op + ') {\n';
+          (block.branches.body || []).forEach(s => { c += this.renderEventSelenium(s, indent + '        '); });
+          if (cfg.action !== 'allMatches') c += indent + '        break;\n';
+          c += indent + '    }\n';
+        } else {
+          (block.branches.body || []).forEach(s => { c += this.renderEventSelenium(s, indent + '    '); });
+        }
+        c += indent + '}\n';
+      }
+      if (block.branches.noMatch && block.branches.noMatch.length > 0) {
+        c += indent + '// No match fallback\n';
+        block.branches.noMatch.forEach(s => { c += this.renderEventSelenium(s, indent); });
+      }
+    } else if (block.blockType === 'tableSelect') {
+      const rowPath = cfg.tableLocator + '/' + (cfg.rowLocator || './/tbody/tr').replace(/^\.\//, '');
+      c += indent + '// TABLE SELECT\n';
+      c += indent + 'List<WebElement> rows = driver.findElements(By.xpath("' + rowPath + '"));\n';
+      c += indent + 'for (WebElement row : rows) {\n';
+      const conds = (cfg.criteria || []).map(cr => {
+        return this.getJavaCompare(cr.operator, 'row.findElement(By.xpath("' + cr.columnLocator + '")).getText()', cr.value);
+      });
+      const logic = cfg.logic === 'OR' ? ' || ' : ' && ';
+      c += indent + '    if (' + (conds.join(logic) || 'true') + ') {\n';
+      (block.branches.body || []).forEach(s => { c += this.renderEventSelenium(s, indent + '        '); });
+      if (cfg.action !== 'allMatches') c += indent + '        break;\n';
+      c += indent + '    }\n';
+      c += indent + '}\n';
+      if (block.branches.noMatch && block.branches.noMatch.length > 0) {
+        c += indent + '// No match fallback\n';
+        block.branches.noMatch.forEach(s => { c += this.renderEventSelenium(s, indent); });
+      }
+    }
+    return c;
+  }
+
+  getJavaCompare(operator, expr, value) {
+    switch (operator) {
+      case 'contains': return expr + '.contains("' + value + '")';
+      case 'equals': return expr + '.equals("' + value + '")';
+      case 'startsWith': return expr + '.startsWith("' + value + '")';
+      case 'endsWith': return expr + '.endsWith("' + value + '")';
+      case 'greaterThan': return 'Double.parseDouble(' + expr + '.replaceAll("[^0-9.]", "")) > ' + parseFloat(value);
+      case 'lessThan': return 'Double.parseDouble(' + expr + '.replaceAll("[^0-9.]", "")) < ' + parseFloat(value);
+      case 'notEquals': return '!' + expr + '.equals("' + value + '")';
+      default: return expr + '.contains("' + value + '")';
+    }
+  }
+
+  buildJavaCondition(cfg) {
+    if (cfg.conditionType === 'dataDriven' || cfg.check === 'dataDriven') {
+      const varName = cfg.variable || 'variable';
+      const op = cfg.operator || '==';
+      const val = cfg.value || '';
+      if (op === '==' || op === 'equals') return 'data.get("' + varName + '").equals("' + val + '")';
+      if (op === '!=' || op === 'notEquals') return '!data.get("' + varName + '").equals("' + val + '")';
+      if (op === 'contains') return 'data.get("' + varName + '").contains("' + val + '")';
+      if (op === 'startsWith') return 'data.get("' + varName + '").startsWith("' + val + '")';
+      return 'data.get("' + varName + '").equals("' + val + '")';
+    } else if (cfg.check === 'textContains') {
+      return 'driver.findElement(By.xpath("' + cfg.locator + '")).getText().contains("' + (cfg.textValue || cfg.value || '') + '")';
+    } else {
+      return 'driver.findElements(By.xpath("' + (cfg.locator || '') + '")).size() > 0';
+    }
+  }
+
   toPlaywright() {
     let c = "const { test } = require('@playwright/test');\n\n";
     c += "test('Kiro Recorded Test', async ({ page }) => {\n";
-    this.events.forEach((e) => {
-      if (e.eventType === 'navigation') { c += "  await page.goto('" + e.tabUrl + "');\n"; return; }
-      const loc = e.locators && e.locators.recommended;
-      if (!loc) return;
-      const sel = loc.strategy === 'id' ? '#' + loc.value : loc.value;
-      if (e.eventType === 'click') c += "  await page.locator('" + sel + "').click();\n";
-      else if (e.eventType === 'type') c += "  await page.locator('" + sel + "').fill('" + (e.value || '') + "');\n";
-    });
+    this.events.forEach((e) => { c += this.renderEventPlaywright(e, '  '); });
     c += '});\n';
     return c;
   }
 
+  renderEventPlaywright(e, indent) {
+    if (e.type === 'block') return this.renderBlockPlaywright(e, indent);
+    let c = '';
+    if (e.eventType === 'navigation') return indent + "await page.goto('" + (e.tabUrl || e.url) + "');\n";
+    const loc = e.locators && e.locators.recommended;
+    if (!loc) return '';
+    const sel = loc.strategy === 'id' ? '#' + loc.value : loc.value;
+    if (e.eventType === 'click') c = indent + "await page.locator('" + sel + "').click();\n";
+    else if (e.eventType === 'type') c = indent + "await page.locator('" + sel + "').fill('" + (e.value || '') + "');\n";
+    else if (e.eventType === 'select') c = indent + "await page.locator('" + sel + "').selectOption('" + (e.value || '') + "');\n";
+    return c;
+  }
+
+  renderBlockPlaywright(block, indent) {
+    let c = '';
+    const cfg = block.config;
+    if (block.blockType === 'condition') {
+      const statement = cfg.statement || 'if';
+
+      if (statement === 'close') {
+        c += indent + '}\n';
+      } else if (statement === 'else') {
+        c += indent + '} else {\n';
+      } else if (statement === 'elseif') {
+        if (cfg.conditionType === 'dataDriven' || cfg.check === 'dataDriven') {
+          const varName = cfg.variable || 'variable';
+          const op = cfg.operator || '==';
+          const val = cfg.value || '';
+          let condExpr = '';
+          if (op === '==' || op === 'equals') condExpr = "data.get('" + varName + "') === '" + val + "'";
+          else if (op === '!=' || op === 'notEquals') condExpr = "data.get('" + varName + "') !== '" + val + "'";
+          else if (op === 'contains') condExpr = "data.get('" + varName + "').includes('" + val + "')";
+          else if (op === 'startsWith') condExpr = "data.get('" + varName + "').startsWith('" + val + "')";
+          else condExpr = "data.get('" + varName + "') === '" + val + "'";
+          c += indent + '} else if (' + condExpr + ') {\n';
+        } else {
+          c += indent + "} else if (await page.locator('" + (cfg.locator || '') + "').count() > 0) {\n";
+        }
+      } else {
+        // if
+        if (cfg.conditionType === 'dataDriven' || cfg.check === 'dataDriven') {
+          const varName = cfg.variable || 'variable';
+          const op = cfg.operator || '==';
+          const val = cfg.value || '';
+          let condExpr = '';
+          if (op === '==' || op === 'equals') condExpr = "data.get('" + varName + "') === '" + val + "'";
+          else if (op === '!=' || op === 'notEquals') condExpr = "data.get('" + varName + "') !== '" + val + "'";
+          else if (op === 'contains') condExpr = "data.get('" + varName + "').includes('" + val + "')";
+          else if (op === 'startsWith') condExpr = "data.get('" + varName + "').startsWith('" + val + "')";
+          else condExpr = "data.get('" + varName + "') === '" + val + "'";
+          c += indent + 'if (' + condExpr + ') {\n';
+        } else {
+          c += indent + "if (await page.locator('" + (cfg.locator || '') + "').count() > 0) {\n";
+        }
+      }
+    } else if (block.blockType === 'loop') {
+      c += indent + '}\n';
+    } else if (block.blockType === 'loop') {
+      c += indent + '// LOOP\n';
+      if (cfg.loopType === 'repeatN') {
+        c += indent + 'for (let i = 0; i < ' + (cfg.count || 5) + '; i++) {\n';
+        (block.branches.body || []).forEach(s => { c += this.renderEventPlaywright(s, indent + '  '); });
+        c += indent + '}\n';
+      } else {
+        const sel = cfg.container + ' ' + (cfg.itemLocator || '*').replace(/^\.\/\//, '');
+        c += indent + "const items = page.locator('" + cfg.container + "').locator('" + (cfg.itemLocator || '*') + "');\n";
+        c += indent + 'const count = await items.count();\n';
+        c += indent + 'for (let i = 0; i < count; i++) {\n';
+        c += indent + '  const item = items.nth(i);\n';
+        if (cfg.match && cfg.match.value) {
+          c += indent + "  const text = await item.locator('" + (cfg.match.elementLocator || '.') + "').textContent();\n";
+          c += indent + '  if (' + this.getJsCompare('text', cfg.match.operator, cfg.match.value) + ') {\n';
+          (block.branches.body || []).forEach(s => { c += this.renderEventPlaywright(s, indent + '    '); });
+          if (cfg.action !== 'allMatches') c += indent + '    break;\n';
+          c += indent + '  }\n';
+        } else {
+          (block.branches.body || []).forEach(s => { c += this.renderEventPlaywright(s, indent + '  '); });
+        }
+        c += indent + '}\n';
+      }
+    } else if (block.blockType === 'tableSelect') {
+      c += indent + '// TABLE SELECT\n';
+      c += indent + "const rows = page.locator('" + cfg.tableLocator + " " + (cfg.rowLocator || 'tbody tr').replace(/^\.\/\//, '') + "');\n";
+      c += indent + 'const rowCount = await rows.count();\n';
+      c += indent + 'for (let i = 0; i < rowCount; i++) {\n';
+      c += indent + '  const row = rows.nth(i);\n';
+      const checks = (cfg.criteria || []).map(cr => {
+        const varName = 'col' + Math.random().toString(36).substr(2, 4);
+        c += indent + "  const " + varName + " = await row.locator('" + cr.columnLocator + "').textContent();\n";
+        return this.getJsCompare(varName, cr.operator, cr.value);
+      });
+      const logic = cfg.logic === 'OR' ? ' || ' : ' && ';
+      c += indent + '  if (' + (checks.join(logic) || 'true') + ') {\n';
+      (block.branches.body || []).forEach(s => { c += this.renderEventPlaywright(s, indent + '    '); });
+      if (cfg.action !== 'allMatches') c += indent + '    break;\n';
+      c += indent + '  }\n';
+      c += indent + '}\n';
+    }
+    return c;
+  }
+
+  getJsCompare(varName, operator, value) {
+    switch (operator) {
+      case 'contains': return varName + ".includes('" + value + "')";
+      case 'equals': return varName + ".trim() === '" + value + "'";
+      case 'startsWith': return varName + ".startsWith('" + value + "')";
+      case 'endsWith': return varName + ".endsWith('" + value + "')";
+      case 'greaterThan': return 'parseFloat(' + varName + ".replace(/[^0-9.]/g, '')) > " + parseFloat(value);
+      case 'lessThan': return 'parseFloat(' + varName + ".replace(/[^0-9.]/g, '')) < " + parseFloat(value);
+      case 'notEquals': return varName + ".trim() !== '" + value + "'";
+      default: return varName + ".includes('" + value + "')";
+    }
+  }
+
   toCypress() {
     let c = "describe('Kiro Recorded Test', () => {\n  it('executes recorded steps', () => {\n";
-    this.events.forEach((e) => {
-      if (e.eventType === 'navigation') { c += "    cy.visit('" + e.tabUrl + "');\n"; return; }
-      const loc = e.locators && e.locators.recommended;
-      if (!loc) return;
-      const sel = loc.strategy === 'id' ? '#' + loc.value : loc.value;
-      if (e.eventType === 'click') c += "    cy.get('" + sel + "').click();\n";
-      else if (e.eventType === 'type') c += "    cy.get('" + sel + "').type('" + (e.value || '') + "');\n";
-    });
+    this.events.forEach((e) => { c += this.renderEventCypress(e, '    '); });
     c += '  });\n});\n';
     return c;
   }
 
+  renderEventCypress(e, indent) {
+    if (e.type === 'block') return this.renderBlockCypress(e, indent);
+    let c = '';
+    if (e.eventType === 'navigation') return indent + "cy.visit('" + (e.tabUrl || e.url) + "');\n";
+    const loc = e.locators && e.locators.recommended;
+    if (!loc) return '';
+    const sel = loc.strategy === 'id' ? '#' + loc.value : loc.value;
+    if (e.eventType === 'click') c = indent + "cy.get('" + sel + "').click();\n";
+    else if (e.eventType === 'type') c = indent + "cy.get('" + sel + "').type('" + (e.value || '') + "');\n";
+    else if (e.eventType === 'select') c = indent + "cy.get('" + sel + "').select('" + (e.value || '') + "');\n";
+    return c;
+  }
+
+  renderBlockCypress(block, indent) {
+    let c = '';
+    const cfg = block.config;
+    if (block.blockType === 'condition') {
+      c += indent + '// IF: ' + cfg.check + '\n';
+      c += indent + "cy.get('body').then(($body) => {\n";
+      c += indent + "  if ($body.find('" + cfg.locator + "').length > 0) {\n";
+      (block.branches.then || []).forEach(s => { c += this.renderEventCypress(s, indent + '    '); });
+      if (block.branches.else && block.branches.else.length > 0) {
+        c += indent + '  } else {\n';
+        block.branches.else.forEach(s => { c += this.renderEventCypress(s, indent + '    '); });
+      }
+      c += indent + '  }\n';
+      c += indent + '});\n';
+    } else if (block.blockType === 'loop') {
+      c += indent + '// LOOP\n';
+      if (cfg.loopType === 'repeatN') {
+        c += indent + 'for (let i = 0; i < ' + (cfg.count || 5) + '; i++) {\n';
+        (block.branches.body || []).forEach(s => { c += this.renderEventCypress(s, indent + '  '); });
+        c += indent + '}\n';
+      } else {
+        c += indent + "cy.get('" + cfg.container + " " + (cfg.itemLocator || '*').replace(/^\.\/\//, '') + "').each(($item) => {\n";
+        if (cfg.match && cfg.match.value) {
+          c += indent + "  const text = $item.find('" + (cfg.match.elementLocator || '').replace(/^\.\/\//, '') + "').text();\n";
+          c += indent + "  if (text.includes('" + cfg.match.value + "')) {\n";
+          c += indent + '    cy.wrap($item).click();\n';
+          if (cfg.action !== 'allMatches') c += indent + '    return false; // break\n';
+          c += indent + '  }\n';
+        } else {
+          (block.branches.body || []).forEach(s => { c += this.renderEventCypress(s, indent + '  '); });
+        }
+        c += indent + '});\n';
+      }
+    } else if (block.blockType === 'tableSelect') {
+      const rowSel = (cfg.tableLocator + ' ' + (cfg.rowLocator || 'tbody tr').replace(/^\.\/\//, '')).trim();
+      c += indent + '// TABLE SELECT\n';
+      c += indent + "cy.get('" + rowSel + "').each(($row) => {\n";
+      const checks = (cfg.criteria || []).map(cr => {
+        return "$row.find('" + cr.columnLocator.replace(/^\.\/\//, '') + "').text().includes('" + cr.value + "')";
+      });
+      const logic = cfg.logic === 'OR' ? ' || ' : ' && ';
+      c += indent + '  if (' + (checks.join(logic) || 'true') + ') {\n';
+      (block.branches.body || []).forEach(s => { c += this.renderEventCypress(s, indent + '    '); });
+      if (cfg.action !== 'allMatches') c += indent + '    return false; // break\n';
+      c += indent + '  }\n';
+      c += indent + '});\n';
+    }
+    return c;
+  }
+
   toRobot() {
-    let c = '*** Settings ***\nLibrary    SeleniumLibrary\n\n*** Test Cases ***\nKiro Recorded Test\n';
-    this.events.forEach((e) => {
-      if (e.eventType === 'navigation') { c += '    Go To    ' + e.tabUrl + '\n'; return; }
-      const loc = e.locators && e.locators.recommended;
-      if (!loc) return;
-      const l = loc.strategy === 'id' ? 'id:' + loc.value : 'xpath:' + loc.value;
-      if (e.eventType === 'click') c += '    Click Element    ' + l + '\n';
-      else if (e.eventType === 'type') c += '    Input Text    ' + l + '    ' + (e.value || '') + '\n';
-    });
+    let c = '*** Settings ***\nLibrary    SeleniumLibrary\nLibrary    Collections\n\n*** Test Cases ***\nKiro Recorded Test\n';
+    this.events.forEach((e) => { c += this.renderEventRobot(e, '    '); });
+    return c;
+  }
+
+  renderEventRobot(e, indent) {
+    if (e.type === 'block') return this.renderBlockRobot(e, indent);
+    let c = '';
+    if (e.eventType === 'navigation') return indent + 'Go To    ' + (e.tabUrl || e.url) + '\n';
+    const loc = e.locators && e.locators.recommended;
+    if (!loc) return '';
+    const l = loc.strategy === 'id' ? 'id:' + loc.value : 'xpath:' + loc.value;
+    if (e.eventType === 'click') c = indent + 'Click Element    ' + l + '\n';
+    else if (e.eventType === 'type') c = indent + 'Input Text    ' + l + '    ' + (e.value || '') + '\n';
+    else if (e.eventType === 'select') c = indent + 'Select From List By Label    ' + l + '    ' + (e.value || '') + '\n';
+    return c;
+  }
+
+  renderBlockRobot(block, indent) {
+    let c = '';
+    const cfg = block.config;
+    if (block.blockType === 'condition') {
+      c += indent + '# IF: ' + cfg.check + '\n';
+      c += indent + '${exists}=    Run Keyword And Return Status    Page Should Contain Element    xpath:' + cfg.locator + '\n';
+      c += indent + 'IF    ${exists}\n';
+      (block.branches.then || []).forEach(s => { c += this.renderEventRobot(s, indent + '    '); });
+      if (block.branches.else && block.branches.else.length > 0) {
+        c += indent + 'ELSE\n';
+        block.branches.else.forEach(s => { c += this.renderEventRobot(s, indent + '    '); });
+      }
+      c += indent + 'END\n';
+    } else if (block.blockType === 'loop') {
+      c += indent + '# LOOP\n';
+      if (cfg.loopType === 'repeatN') {
+        c += indent + 'FOR    ${i}    IN RANGE    ' + (cfg.count || 5) + '\n';
+        (block.branches.body || []).forEach(s => { c += this.renderEventRobot(s, indent + '    '); });
+        c += indent + 'END\n';
+      } else {
+        c += indent + '@{items}=    Get WebElements    xpath:' + cfg.container + '/' + (cfg.itemLocator || '*').replace(/^\.\//, '') + '\n';
+        c += indent + 'FOR    ${item}    IN    @{items}\n';
+        if (cfg.match && cfg.match.value) {
+          c += indent + '    ${text}=    Get Text    ${item}\n';
+          c += indent + "    IF    '" + cfg.match.value + "' in '${text}'\n";
+          (block.branches.body || []).forEach(s => { c += this.renderEventRobot(s, indent + '        '); });
+          c += indent + '        Exit For Loop\n';
+          c += indent + '    END\n';
+        } else {
+          (block.branches.body || []).forEach(s => { c += this.renderEventRobot(s, indent + '    '); });
+        }
+        c += indent + 'END\n';
+      }
+    } else if (block.blockType === 'tableSelect') {
+      c += indent + '# TABLE SELECT\n';
+      c += indent + '@{rows}=    Get WebElements    xpath:' + cfg.tableLocator + '/' + (cfg.rowLocator || './/tbody/tr').replace(/^\.\//, '') + '\n';
+      c += indent + 'FOR    ${row}    IN    @{rows}\n';
+      (cfg.criteria || []).forEach((cr, i) => {
+        c += indent + '    ${col' + i + '}=    Get Text    ${row}//' + cr.columnLocator.replace(/^\.\/\//, '') + '\n';
+      });
+      const conds = (cfg.criteria || []).map((cr, i) => "'" + cr.value + "' in '${col" + i + "}'");
+      c += indent + '    IF    ' + (conds.join(' and ') || 'True') + '\n';
+      (block.branches.body || []).forEach(s => { c += this.renderEventRobot(s, indent + '        '); });
+      c += indent + '        Exit For Loop\n';
+      c += indent + '    END\n';
+      c += indent + 'END\n';
+    }
     return c;
   }
 
   toCsv() {
     let csv = 'Step,Event Type,Target,Value,URL,Timestamp\n';
     this.events.forEach((e, i) => {
-      const t = (e.locators && e.locators.recommended && e.locators.recommended.value) || '';
-      csv += (i + 1) + ',"' + e.eventType + '","' + t + '","' + (e.value || '') + '","' + (e.url || '') + '",' + e.timestamp + '\n';
+      if (e.type === 'block') {
+        csv += (i + 1) + ',"BLOCK:' + e.blockType + '","' + (e.config.locator || e.config.container || e.config.tableLocator || '') + '","","",\n';
+        // Flatten branch steps
+        Object.entries(e.branches || {}).forEach(([branch, steps]) => {
+          steps.forEach((s, j) => {
+            const t = (s.locators && s.locators.recommended && s.locators.recommended.value) || '';
+            csv += '  ' + branch + '.' + (j + 1) + ',"' + (s.eventType || 'block') + '","' + t + '","' + (s.value || '') + '","' + (s.url || '') + '",' + (s.timestamp || '') + '\n';
+          });
+        });
+      } else {
+        const t = (e.locators && e.locators.recommended && e.locators.recommended.value) || '';
+        csv += (i + 1) + ',"' + e.eventType + '","' + t + '","' + (e.value || '') + '","' + (e.url || '') + '",' + e.timestamp + '\n';
+      }
     });
     return csv;
   }
@@ -279,6 +927,25 @@ class DashboardController {
     let currentType = null; // 'nav', 'close', 'screen'
 
     events.forEach((e) => {
+      // Block events (if/else/loop/table markers) stay in the current page — don't split
+      if (e.type === 'block') {
+        if (currentPage) {
+          currentPage.events.push(e);
+        } else {
+          // Edge case: block before any page exists — create a default page
+          currentPage = {
+            title: 'Screen',
+            url: '',
+            events: [e],
+            isNavigation: false,
+            isMenuClose: false,
+          };
+          pages.push(currentPage);
+          currentType = 'screen';
+        }
+        return;
+      }
+
       var type = 'screen';
       if (e.isDashboardNav) type = 'nav';
       else if (e.isDashboardClose) type = 'close';
@@ -544,6 +1211,7 @@ class DashboardController {
     // Collect unique elements with their event type
     const elements = new Map();
     page.events.forEach((e) => {
+      if (e.type === 'block') return; // Skip control flow markers
       if (!e.locators || e.eventType === 'navigation' || e.eventType === 'pageload') return;
       const fieldName = this.toFieldName(e.locators);
       if (!elements.has(fieldName)) {
@@ -577,6 +1245,7 @@ class DashboardController {
     // Generate action methods based on event type
     const addedMethods = new Set();
     page.events.forEach((e) => {
+      if (e.type === 'block') return; // Skip control flow markers
       if (!e.locators || e.eventType === 'navigation' || e.eventType === 'pageload') return;
       const fieldName = this.toFieldName(e.locators);
       const methodKey = e.eventType + '_' + fieldName;
@@ -671,6 +1340,22 @@ class DashboardController {
             break;
           }
         }
+
+        // Handle any block events in this navigation page (e.g. if condition after menu)
+        page.events.forEach((e) => {
+          if (e.type === 'block' && e.blockType === 'condition') {
+            const stmt = e.config.statement || 'if';
+            if (stmt === 'close') {
+              c += '        }\n';
+            } else if (stmt === 'else') {
+              c += '        } else {\n';
+            } else if (stmt === 'elseif') {
+              c += '        } else if (' + this.buildJavaCondition(e.config) + ') {\n';
+            } else {
+              c += '        if (' + this.buildJavaCondition(e.config) + ') {\n';
+            }
+          }
+        });
       } else if (page.isMenuClose) {
         // Call closing method from same dashboardPage object
         if (!dashboardCreated) {
@@ -689,24 +1374,69 @@ class DashboardController {
           var closeName = txt.replace(/[^a-zA-Z0-9\s]/g, '').split(/\s+/).filter(function(w){return w.length>0;}).map(function(w){return w.charAt(0).toUpperCase()+w.slice(1).toLowerCase();}).join('');
           c += '        dashboardPage.closing' + closeName + '();\n';
         }
+
+        // Handle any block events in this close page
+        page.events.forEach((e) => {
+          if (e.type === 'block' && e.blockType === 'condition') {
+            const stmt = e.config.statement || 'if';
+            if (stmt === 'close') {
+              c += '        }\n';
+            } else if (stmt === 'else') {
+              c += '        } else {\n';
+            } else if (stmt === 'elseif') {
+              c += '        } else if (' + this.buildJavaCondition(e.config) + ') {\n';
+            } else {
+              c += '        if (' + this.buildJavaCondition(e.config) + ') {\n';
+            }
+          }
+        });
       } else {
         // Actual screen - use Page Object
         c += '\n        // --- Screen: ' + page.title + ' ---\n';
         c += '        ' + className + ' ' + varName + ' = new ' + className + '(driver);\n';
+        var indentLevel = 2; // base indent: 2 levels (8 spaces)
         page.events.forEach((e) => {
+          // Handle control flow blocks (bracket markers)
+          if (e.type === 'block' && e.blockType === 'condition') {
+            const stmt = e.config.statement || 'if';
+            if (stmt === 'close') {
+              indentLevel--;
+              c += '    '.repeat(indentLevel) + '}\n';
+            } else if (stmt === 'else') {
+              indentLevel--;
+              c += '    '.repeat(indentLevel) + '} else {\n';
+              indentLevel++;
+            } else if (stmt === 'elseif') {
+              indentLevel--;
+              const condExpr = this.buildJavaCondition(e.config);
+              c += '    '.repeat(indentLevel) + '} else if (' + condExpr + ') {\n';
+              indentLevel++;
+            } else {
+              // if
+              const condExpr = this.buildJavaCondition(e.config);
+              c += '    '.repeat(indentLevel) + 'if (' + condExpr + ') {\n';
+              indentLevel++;
+            }
+            return;
+          }
+          if (e.type === 'block') {
+            c += this.renderBlockSelenium(e, '    '.repeat(indentLevel));
+            return;
+          }
           if (!e.locators || e.eventType === 'navigation' || e.eventType === 'pageload') return;
+          const indent = '    '.repeat(indentLevel);
           const fieldName = this.toFieldName(e.locators);
           const methodName = fieldName.charAt(0).toUpperCase() + fieldName.slice(1);
           if (e.eventType === 'click') {
-            c += '        ' + varName + '.clicking' + methodName + '();\n';
+            c += indent + varName + '.clicking' + methodName + '();\n';
           } else if (e.eventType === 'type') {
-            c += '        ' + varName + '.entering' + methodName + '("' + (e.value || '') + '");\n';
+            c += indent + varName + '.entering' + methodName + '("' + (e.value || '') + '");\n';
           } else if (e.eventType === 'select') {
-            c += '        ' + varName + '.selecting' + methodName + '("' + (e.selectedText || e.value || '') + '");\n';
+            c += indent + varName + '.selecting' + methodName + '("' + (e.selectedText || e.value || '') + '");\n';
           } else if (e.eventType === 'checkbox') {
-            c += '        ' + varName + '.checking' + methodName + '();\n';
+            c += indent + varName + '.checking' + methodName + '();\n';
           } else if (e.eventType === 'radio') {
-            c += '        ' + varName + '.selecting' + methodName + '();\n';
+            c += indent + varName + '.selecting' + methodName + '();\n';
           }
         });
       }
@@ -1059,3 +1789,897 @@ class DashboardController {
 }
 
 const dashboard = new DashboardController();
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// Control Flow Controller
+// Manages If/Else, Loop, and Table Select UI flows in the side panel.
+// ═══════════════════════════════════════════════════════════════════════════════
+
+class ControlFlowController {
+  constructor(dashboardCtrl) {
+    this.dashboard = dashboardCtrl;
+    this.isActive = false;
+    this.currentWizard = null; // 'condition' | 'loop' | 'table'
+    this.pickMode = null; // null | { field, resolve }
+    this.initLogicToolbar();
+    this.initConditionWizard();
+    this.initLoopWizard();
+    this.initTableWizard();
+    this.initManualStepInsertion();
+    this.listenForControlFlowUpdates();
+  }
+
+  // ─── Logic Toolbar ─────────────────────────────────────────────────────────
+
+  initLogicToolbar() {
+    document.getElementById('btn-add-condition').addEventListener('click', () => {
+      this.ensureRecording().then(ok => { if (ok) this.showWizard('condition'); });
+    });
+    document.getElementById('btn-add-loop').addEventListener('click', () => {
+      this.ensureRecording().then(ok => { if (ok) this.showWizard('loop'); });
+    });
+    document.getElementById('btn-add-table-select').addEventListener('click', () => {
+      this.ensureRecording().then(ok => { if (ok) this.showWizard('table'); });
+    });
+    document.getElementById('cf-banner-end').addEventListener('click', () => {
+      this.endCurrentBlock();
+    });
+  }
+
+  /**
+   * Ensure recording is active before adding control flow blocks.
+   * If not recording, auto-start it.
+   */
+  async ensureRecording() {
+    const state = await this.sendMessage('GET_STATE');
+    if (state && state.state && state.state.status === 'recording') {
+      return true;
+    }
+    // Auto-start recording
+    const resp = await this.sendMessage('START_RECORDING', {});
+    if (resp && resp.success) {
+      return true;
+    }
+    alert('Please start recording first from the popup.');
+    return false;
+  }
+
+  // ─── Manual Step Insertion ─────────────────────────────────────────────────
+
+  initManualStepInsertion() {
+    const actionSelect = document.getElementById('cf-manual-action');
+    const valueInput = document.getElementById('cf-manual-value');
+    const locatorInput = document.getElementById('cf-manual-locator');
+    const addBtn = document.getElementById('cf-manual-add-btn');
+    const pickBtn = document.getElementById('cf-manual-pick');
+
+    // Show/hide value field based on action type
+    actionSelect.addEventListener('change', () => {
+      const needsValue = ['type', 'select', 'keypress', 'navigation'].includes(actionSelect.value);
+      valueInput.style.display = needsValue ? 'block' : 'none';
+      if (actionSelect.value === 'navigation') {
+        locatorInput.placeholder = 'Not needed for navigation';
+        valueInput.placeholder = 'URL to navigate to';
+      } else if (actionSelect.value === 'type') {
+        locatorInput.placeholder = 'Element locator (XPath/CSS/#id)';
+        valueInput.placeholder = 'Text to type';
+      } else if (actionSelect.value === 'select') {
+        locatorInput.placeholder = 'Element locator (XPath/CSS/#id)';
+        valueInput.placeholder = 'Option text to select';
+      } else if (actionSelect.value === 'keypress') {
+        locatorInput.placeholder = 'Element locator (XPath/CSS/#id)';
+        valueInput.placeholder = 'Key name (Enter, Tab, Escape)';
+      } else {
+        locatorInput.placeholder = 'Element locator (XPath/CSS/#id)';
+        valueInput.placeholder = '';
+      }
+    });
+
+    // Pick element
+    pickBtn.addEventListener('click', () => {
+      this.startElementPick('cf-manual-locator');
+    });
+
+    // Add step button
+    addBtn.addEventListener('click', () => {
+      this.addManualStep();
+    });
+  }
+
+  async addManualStep() {
+    const action = document.getElementById('cf-manual-action').value;
+    const locator = document.getElementById('cf-manual-locator').value.trim();
+    const value = document.getElementById('cf-manual-value').value.trim();
+
+    if (!locator && action !== 'navigation') {
+      alert('Please provide a locator for the element.');
+      return;
+    }
+    if (action === 'navigation' && !value) {
+      alert('Please provide a URL to navigate to.');
+      return;
+    }
+
+    // Build the event object
+    const event = {
+      eventType: action,
+      timestamp: Date.now(),
+      url: '',
+      locators: {
+        recommended: {
+          strategy: locator.startsWith('#') ? 'id' : (locator.startsWith('//') || locator.startsWith('.//')) ? 'xpath' : 'css',
+          value: locator.startsWith('#') ? locator.substring(1) : locator,
+        },
+        relativeXPath: locator.startsWith('//') || locator.startsWith('.//') ? locator : null,
+        id: locator.startsWith('#') ? locator.substring(1) : null,
+      },
+    };
+
+    if (action === 'type') {
+      event.value = value;
+    } else if (action === 'select') {
+      event.value = value;
+      event.selectedText = value;
+    } else if (action === 'keypress') {
+      event.key = value;
+    } else if (action === 'navigation') {
+      event.eventType = 'navigation';
+      event.tabUrl = value;
+      event.url = value;
+      event.locators = null;
+    } else if (action === 'checkbox') {
+      event.checked = true;
+    }
+
+    // Send to service worker to add to the current block's active branch
+    const resp = await this.sendMessage('RECORD_EVENT', event);
+
+    if (resp && resp.success) {
+      // Show feedback — add to timeline
+      this.dashboard.addTimelineItem(resp.event || event);
+      // Clear inputs
+      document.getElementById('cf-manual-locator').value = '';
+      document.getElementById('cf-manual-value').value = '';
+    } else {
+      alert('Failed to add step: ' + ((resp && resp.error) || 'Unknown error'));
+    }
+  }
+
+  // ─── Wizard Show/Hide ──────────────────────────────────────────────────────
+
+  showWizard(type) {
+    this.hideAllWizards();
+    document.getElementById('cf-wizard').style.display = 'block';
+    document.getElementById(`cf-wizard-${type}`).style.display = 'block';
+    this.currentWizard = type;
+  }
+
+  hideAllWizards() {
+    document.getElementById('cf-wizard').style.display = 'none';
+    document.getElementById('cf-wizard-condition').style.display = 'none';
+    document.getElementById('cf-wizard-loop').style.display = 'none';
+    document.getElementById('cf-wizard-table').style.display = 'none';
+    this.currentWizard = null;
+  }
+
+  // ─── Condition Wizard ──────────────────────────────────────────────────────
+
+  initConditionWizard() {
+    const checkSelect = document.getElementById('cf-condition-check');
+    const valueRow = document.getElementById('cf-condition-value-row');
+
+    checkSelect.addEventListener('change', () => {
+      const needsValue = ['textContains', 'attributeEquals', 'elementCount'].includes(checkSelect.value);
+      valueRow.style.display = needsValue ? 'block' : 'none';
+    });
+
+    document.getElementById('cf-condition-pick').addEventListener('click', () => {
+      this.startElementPick('cf-condition-locator');
+    });
+
+    document.getElementById('cf-condition-start').addEventListener('click', () => {
+      this.startConditionBlock();
+    });
+
+    document.getElementById('cf-condition-cancel').addEventListener('click', () => {
+      this.hideAllWizards();
+    });
+  }
+
+  async startConditionBlock() {
+    const check = document.getElementById('cf-condition-check').value;
+    const locator = document.getElementById('cf-condition-locator').value.trim();
+    const value = document.getElementById('cf-condition-value').value.trim();
+
+    if (!locator) {
+      alert('Please provide a locator for the condition element.');
+      return;
+    }
+
+    const config = { check, locator, value };
+    const resp = await this.sendMessage('START_CONDITION', config);
+
+    if (resp.success) {
+      this.hideAllWizards();
+      this.showBanner('condition', 'then');
+      this.isActive = true;
+    } else {
+      alert('Failed to start condition: ' + (resp.error || 'Unknown error'));
+    }
+  }
+
+  // ─── Loop Wizard ───────────────────────────────────────────────────────────
+
+  initLoopWizard() {
+    const loopTypeSelect = document.getElementById('cf-loop-type');
+
+    loopTypeSelect.addEventListener('change', () => {
+      const type = loopTypeSelect.value;
+      document.getElementById('cf-loop-container-row').style.display =
+        (type === 'repeatN' || type === 'repeatUntil') ? 'none' : 'block';
+      document.getElementById('cf-loop-item-row').style.display =
+        (type === 'repeatN' || type === 'repeatUntil') ? 'none' : 'block';
+      document.getElementById('cf-loop-match-row').style.display =
+        (type === 'findMatch' || type === 'allMatches') ? 'block' : 'none';
+      document.getElementById('cf-loop-match-value-row').style.display =
+        (type === 'findMatch' || type === 'allMatches') ? 'block' : 'none';
+      document.getElementById('cf-loop-count-row').style.display =
+        type === 'repeatN' ? 'block' : 'none';
+    });
+
+    document.getElementById('cf-loop-container-pick').addEventListener('click', () => {
+      this.startElementPick('cf-loop-container');
+    });
+    document.getElementById('cf-loop-item-pick').addEventListener('click', () => {
+      this.startElementPick('cf-loop-item');
+    });
+    document.getElementById('cf-loop-match-pick').addEventListener('click', () => {
+      this.startElementPick('cf-loop-match-locator');
+    });
+
+    document.getElementById('cf-loop-start').addEventListener('click', () => {
+      this.startLoopBlock();
+    });
+
+    document.getElementById('cf-loop-cancel').addEventListener('click', () => {
+      this.hideAllWizards();
+    });
+  }
+
+  async startLoopBlock() {
+    const loopType = document.getElementById('cf-loop-type').value;
+    const container = document.getElementById('cf-loop-container').value.trim();
+    const itemLocator = document.getElementById('cf-loop-item').value.trim();
+    const matchLocator = document.getElementById('cf-loop-match-locator').value.trim();
+    const matchOperator = document.getElementById('cf-loop-match-operator').value;
+    const matchValue = document.getElementById('cf-loop-match-value').value.trim();
+    const count = parseInt(document.getElementById('cf-loop-count').value) || 5;
+
+    if ((loopType === 'findMatch' || loopType === 'allMatches') && !container) {
+      alert('Please provide a container locator.');
+      return;
+    }
+
+    const config = {
+      loopType,
+      container,
+      itemLocator,
+      count: loopType === 'repeatN' ? count : null,
+      match: (loopType === 'findMatch' || loopType === 'allMatches') ? {
+        elementLocator: matchLocator,
+        operator: matchOperator,
+        value: matchValue,
+      } : null,
+      action: loopType === 'allMatches' ? 'allMatches' : 'firstMatch',
+    };
+
+    const resp = await this.sendMessage('START_LOOP', config);
+
+    if (resp.success) {
+      this.hideAllWizards();
+      this.showBanner('loop', 'body');
+      this.isActive = true;
+    } else {
+      alert('Failed to start loop: ' + (resp.error || 'Unknown error'));
+    }
+  }
+
+  // ─── Table Select Wizard ───────────────────────────────────────────────────
+
+  initTableWizard() {
+    document.getElementById('cf-table-pick').addEventListener('click', () => {
+      this.startElementPick('cf-table-locator');
+    });
+
+    document.getElementById('cf-table-add-criterion').addEventListener('click', () => {
+      this.addTableCriterion();
+    });
+
+    document.getElementById('cf-table-start').addEventListener('click', () => {
+      this.startTableSelectBlock();
+    });
+
+    document.getElementById('cf-table-cancel').addEventListener('click', () => {
+      this.hideAllWizards();
+      this.clearTableDetection();
+    });
+  }
+
+  /**
+   * When table is detected via pick, show a column selector panel
+   * allowing users to pick columns by name instead of typing locators.
+   */
+  showDetectedColumns(headers, rowCount) {
+    // Remove existing column panel if any
+    this.clearColumnPanel();
+
+    if (!headers || headers.length === 0) return;
+
+    const wizardEl = document.getElementById('cf-wizard-table');
+    const criteriaSection = document.getElementById('cf-table-criteria');
+
+    // Create column detection panel
+    const panel = document.createElement('div');
+    panel.id = 'cf-table-column-panel';
+    panel.className = 'cf-table-column-panel';
+    panel.innerHTML = `
+      <div class="cf-column-panel-header">
+        <span class="cf-column-panel-title">Detected ${headers.length} columns, ${rowCount} rows</span>
+      </div>
+      <div class="cf-column-panel-hint">Select columns and set match criteria:</div>
+      <div class="cf-column-items" id="cf-column-items"></div>
+    `;
+
+    // Insert before criteria section
+    criteriaSection.parentElement.insertBefore(panel, criteriaSection);
+
+    // Populate columns
+    const itemsContainer = panel.querySelector('#cf-column-items');
+    headers.forEach((header, idx) => {
+      const item = document.createElement('div');
+      item.className = 'cf-column-item';
+      item.setAttribute('data-index', idx);
+      item.innerHTML = `
+        <label class="cf-column-check">
+          <input type="checkbox" class="cf-column-checkbox" data-col-index="${idx}" data-col-locator="${header.locator}" />
+          <span class="cf-column-name">${header.name || 'Column ' + (idx + 1)}</span>
+          <span class="cf-column-locator">${header.locator}</span>
+        </label>
+        <div class="cf-column-criteria" style="display:none;">
+          <select class="cf-column-operator">
+            <option value="equals">equals</option>
+            <option value="contains">contains</option>
+            <option value="startsWith">starts with</option>
+            <option value="greaterThan">greater than</option>
+            <option value="lessThan">less than</option>
+            <option value="notEquals">not equals</option>
+          </select>
+          <input type="text" class="cf-column-value" placeholder="Match value..." />
+        </div>
+      `;
+
+      // Toggle criteria row when checkbox is checked
+      const checkbox = item.querySelector('.cf-column-checkbox');
+      const criteriaRow = item.querySelector('.cf-column-criteria');
+      checkbox.addEventListener('change', () => {
+        criteriaRow.style.display = checkbox.checked ? 'flex' : 'none';
+      });
+
+      itemsContainer.appendChild(item);
+    });
+
+    // Hide the manual criteria section when columns are detected
+    criteriaSection.style.display = 'none';
+    document.getElementById('cf-table-add-criterion').style.display = 'none';
+
+    // Store headers for later use
+    this._detectedHeaders = headers;
+  }
+
+  clearColumnPanel() {
+    const existing = document.getElementById('cf-table-column-panel');
+    if (existing) existing.remove();
+    this._detectedHeaders = null;
+
+    // Restore manual criteria section
+    const criteriaSection = document.getElementById('cf-table-criteria');
+    if (criteriaSection) criteriaSection.style.display = '';
+    const addBtn = document.getElementById('cf-table-add-criterion');
+    if (addBtn) addBtn.style.display = '';
+  }
+
+  clearTableDetection() {
+    this.clearColumnPanel();
+  }
+
+  addTableCriterion() {
+    const container = document.getElementById('cf-table-criteria');
+    const index = container.children.length;
+    const criterion = document.createElement('div');
+    criterion.className = 'cf-table-criterion';
+    criterion.setAttribute('data-index', index);
+    criterion.innerHTML = `
+      <input type="text" class="cf-table-col-locator" placeholder="Column locator: .//td[${index + 2}]" />
+      <select class="cf-table-col-operator">
+        <option value="equals">equals</option>
+        <option value="contains">contains</option>
+        <option value="startsWith">starts with</option>
+        <option value="greaterThan">greater than</option>
+        <option value="lessThan">less than</option>
+        <option value="notEquals">not equals</option>
+      </select>
+      <input type="text" class="cf-table-col-value" placeholder="Value" />
+      <button class="cf-remove-criterion" title="Remove">&#10006;</button>
+    `;
+    criterion.querySelector('.cf-remove-criterion').addEventListener('click', () => {
+      criterion.remove();
+    });
+    container.appendChild(criterion);
+  }
+
+  async startTableSelectBlock() {
+    const tableLocator = document.getElementById('cf-table-locator').value.trim();
+    const rowLocator = document.getElementById('cf-table-row').value.trim();
+    const logic = document.getElementById('cf-table-logic').value;
+    const action = document.getElementById('cf-table-action').value;
+
+    if (!tableLocator) {
+      alert('Please provide a table locator.');
+      return;
+    }
+
+    // Gather criteria from detected columns panel (if available)
+    let criteria = [];
+    const columnPanel = document.getElementById('cf-table-column-panel');
+
+    if (columnPanel) {
+      // Use the column panel checkboxes
+      const checkedColumns = columnPanel.querySelectorAll('.cf-column-checkbox:checked');
+      checkedColumns.forEach((checkbox) => {
+        const item = checkbox.closest('.cf-column-item');
+        const colLocator = checkbox.getAttribute('data-col-locator');
+        const operator = item.querySelector('.cf-column-operator').value;
+        const value = item.querySelector('.cf-column-value').value.trim();
+        if (colLocator && value) {
+          criteria.push({ columnLocator: colLocator, operator, value });
+        }
+      });
+    } else {
+      // Fallback: use manual criteria inputs
+      const criteriaElements = document.querySelectorAll('.cf-table-criterion');
+      criteriaElements.forEach((el) => {
+        const colLocator = el.querySelector('.cf-table-col-locator').value.trim();
+        const operator = el.querySelector('.cf-table-col-operator').value;
+        const value = el.querySelector('.cf-table-col-value').value.trim();
+        if (colLocator && value) {
+          criteria.push({ columnLocator: colLocator, operator, value });
+        }
+      });
+    }
+
+    if (criteria.length === 0) {
+      alert('Please select at least one column and provide a match value.');
+      return;
+    }
+
+    const config = {
+      tableLocator,
+      rowLocator: rowLocator || './/tbody/tr',
+      columns: this._detectedHeaders || [],
+      criteria,
+      logic,
+      action,
+    };
+
+    const resp = await this.sendMessage('START_TABLE_SELECT', config);
+
+    if (resp.success) {
+      this.hideAllWizards();
+      this.showBanner('tableSelect', 'body');
+      this.isActive = true;
+    } else {
+      alert('Failed to start table select: ' + (resp.error || 'Unknown error'));
+    }
+  }
+
+  // ─── Banner Management ─────────────────────────────────────────────────────
+
+  showBanner(blockType, branchName) {
+    const banner = document.getElementById('control-flow-banner');
+    const title = document.getElementById('cf-banner-title');
+    const icon = document.getElementById('cf-banner-icon');
+    const actions = document.getElementById('cf-banner-actions');
+
+    banner.style.display = 'block';
+    banner.className = `control-flow-banner cf-banner-${blockType} cf-branch-${branchName}`;
+
+    switch (blockType) {
+      case 'condition':
+        icon.innerHTML = '&#9888;';
+        title.textContent = branchName === 'then'
+          ? 'Recording IF (THEN) branch...'
+          : 'Recording ELSE branch...';
+        actions.innerHTML = branchName === 'then'
+          ? '<button class="cf-action-btn cf-switch-else" id="cf-switch-else">Switch to ELSE</button>'
+          : '<button class="cf-action-btn cf-switch-then" id="cf-switch-then">Switch to THEN</button>';
+        break;
+
+      case 'loop':
+        icon.innerHTML = '&#128260;';
+        title.textContent = branchName === 'body'
+          ? 'Recording LOOP body...'
+          : 'Recording NO MATCH fallback...';
+        actions.innerHTML = branchName === 'body'
+          ? '<button class="cf-action-btn cf-switch-nomatch" id="cf-switch-nomatch">Add No-Match Fallback</button>'
+          : '<button class="cf-action-btn cf-switch-body" id="cf-switch-body">Back to Loop Body</button>';
+        break;
+
+      case 'tableSelect':
+        icon.innerHTML = '&#128203;';
+        title.textContent = branchName === 'body'
+          ? 'Recording TABLE MATCH action...'
+          : 'Recording NO MATCH fallback...';
+        actions.innerHTML = branchName === 'body'
+          ? '<button class="cf-action-btn cf-switch-nomatch" id="cf-switch-nomatch">Add No-Match Fallback</button>'
+          : '<button class="cf-action-btn cf-switch-body" id="cf-switch-body">Back to Match Action</button>';
+        break;
+    }
+
+    // Attach branch switch handlers
+    this.attachBannerHandlers();
+  }
+
+  attachBannerHandlers() {
+    const switchElse = document.getElementById('cf-switch-else');
+    const switchThen = document.getElementById('cf-switch-then');
+    const switchNoMatch = document.getElementById('cf-switch-nomatch');
+    const switchBody = document.getElementById('cf-switch-body');
+
+    if (switchElse) {
+      switchElse.addEventListener('click', () => this.switchBranch('else'));
+    }
+    if (switchThen) {
+      switchThen.addEventListener('click', () => this.switchBranch('then'));
+    }
+    if (switchNoMatch) {
+      switchNoMatch.addEventListener('click', () => this.switchBranch('noMatch'));
+    }
+    if (switchBody) {
+      switchBody.addEventListener('click', () => this.switchBranch('body'));
+    }
+  }
+
+  async switchBranch(branchName) {
+    const resp = await this.sendMessage('SWITCH_BRANCH', { branch: branchName });
+    if (resp.success) {
+      const cf = resp.controlFlow;
+      const block = cf.currentBlock;
+      if (block) {
+        this.showBanner(block.blockType, branchName);
+      }
+    }
+  }
+
+  async endCurrentBlock() {
+    const resp = await this.sendMessage('END_BLOCK');
+    if (resp.success) {
+      // Check if still inside a parent block
+      if (resp.controlFlow.isActive) {
+        const parentBlock = resp.controlFlow.currentBlock;
+        const mode = resp.controlFlow.mode;
+        const branchName = mode.split('_').slice(1).join('_');
+        this.showBanner(parentBlock.blockType, branchName);
+      } else {
+        this.hideBanner();
+        this.isActive = false;
+      }
+
+      // Add the completed block to the timeline visually
+      if (resp.block) {
+        this.dashboard.addBlockToTimeline(resp.block);
+      }
+    }
+  }
+
+  hideBanner() {
+    document.getElementById('control-flow-banner').style.display = 'none';
+  }
+
+  // ─── Element Picker ────────────────────────────────────────────────────────
+
+  async startElementPick(targetFieldId) {
+    const targetField = document.getElementById(targetFieldId);
+
+    // Send message to content script to enter pick mode
+    try {
+      const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+      if (!tab) { alert('No active tab found.'); return; }
+
+      chrome.tabs.sendMessage(tab.id, {
+        type: 'ENTER_PICK_MODE',
+        payload: { fieldId: targetFieldId },
+      });
+
+      // Temporarily change button text
+      const pickBtn = targetField.nextElementSibling;
+      if (pickBtn) {
+        pickBtn.textContent = '... picking';
+        pickBtn.disabled = true;
+      }
+    } catch (e) {
+      alert('Could not connect to page. Make sure recording is active.');
+    }
+  }
+
+  // ─── Listen for Updates ────────────────────────────────────────────────────
+
+  listenForControlFlowUpdates() {
+    chrome.runtime.onMessage.addListener((msg) => {
+      if (msg.type === 'CONTROL_FLOW_CHANGED') {
+        this.onControlFlowChanged(msg.payload);
+      }
+      if (msg.type === 'ELEMENT_PICKED') {
+        this.onElementPicked(msg.payload);
+      }
+      if (msg.type === 'BLOCK_COMPLETED') {
+        // Block was completed — already handled in endCurrentBlock
+      }
+    });
+  }
+
+  onControlFlowChanged(cfState) {
+    if (cfState.isActive) {
+      const block = cfState.currentBlock;
+      const mode = cfState.mode;
+      const branchName = mode ? mode.split('_').slice(1).join('_') : 'body';
+      this.showBanner(block.blockType, branchName);
+      this.isActive = true;
+    } else {
+      this.hideBanner();
+      this.isActive = false;
+    }
+
+    // Update depth indicator
+    const depthEl = document.getElementById('cf-banner-depth');
+    if (cfState.depth > 1) {
+      depthEl.textContent = `Nesting depth: ${cfState.depth}`;
+      depthEl.style.display = 'block';
+    } else {
+      depthEl.style.display = 'none';
+    }
+  }
+
+  onElementPicked(payload) {
+    const { fieldId, locator, pattern, tableInfo, extraFields } = payload;
+    const field = document.getElementById(fieldId);
+    if (field) {
+      field.value = locator;
+    }
+
+    // Auto-fill extra fields (e.g., container when user picks an item)
+    if (extraFields) {
+      Object.entries(extraFields).forEach(([id, value]) => {
+        const extraField = document.getElementById(id);
+        if (extraField && !extraField.value) {
+          extraField.value = value;
+        }
+      });
+    }
+
+    // If pattern info returned, auto-fill the item locator field
+    if (pattern && fieldId === 'cf-loop-container') {
+      const itemField = document.getElementById('cf-loop-item');
+      if (itemField && pattern.itemSelector) {
+        itemField.value = pattern.itemSelector;
+      }
+      // Show detected count
+      this.showPatternFeedback(pattern.itemCount);
+    }
+
+    if (pattern && fieldId === 'cf-loop-item') {
+      // Pattern detected from a single item — fills both container and item
+      const containerField = document.getElementById('cf-loop-container');
+      if (containerField && pattern.containerXPath) {
+        containerField.value = pattern.containerXPath;
+      }
+      const itemField = document.getElementById('cf-loop-item');
+      if (itemField && pattern.itemLocator) {
+        itemField.value = pattern.itemLocator;
+      }
+      this.showPatternFeedback(pattern.itemCount);
+    }
+
+    // If table info returned, auto-fill table wizard
+    if (tableInfo && fieldId === 'cf-table-locator') {
+      const rowField = document.getElementById('cf-table-row');
+      if (rowField && tableInfo.rowLocator) {
+        rowField.value = tableInfo.rowLocator;
+      }
+      // Store row count for column panel
+      this._lastTableRowCount = tableInfo.rowCount || 0;
+      // If headers found, show the column selection panel
+      if (tableInfo.headers && tableInfo.headers.length > 0) {
+        this.populateTableHeaders(tableInfo.headers);
+      }
+      this.showPatternFeedback(tableInfo.rowCount, 'rows');
+    }
+
+    // Restore pick button
+    const pickBtn = field ? field.nextElementSibling : null;
+    if (pickBtn && pickBtn.classList.contains('cf-pick-btn')) {
+      pickBtn.innerHTML = '&#127919; Pick';
+      pickBtn.disabled = false;
+    }
+  }
+
+  showPatternFeedback(count, label) {
+    label = label || 'items';
+    // Create or update a small feedback message near the wizard
+    let feedback = document.getElementById('cf-pattern-feedback');
+    if (!feedback) {
+      feedback = document.createElement('div');
+      feedback.id = 'cf-pattern-feedback';
+      feedback.style.cssText = 'padding:6px 10px;margin:6px 0;border-radius:4px;font-size:11px;font-weight:500;';
+      const wizard = document.getElementById('cf-wizard');
+      if (wizard) wizard.appendChild(feedback);
+    }
+
+    if (count >= 2) {
+      feedback.textContent = `Found ${count} ${label}`;
+      feedback.style.color = '#2ecc71';
+      feedback.style.background = 'rgba(46,204,113,0.1)';
+      feedback.style.border = '1px solid rgba(46,204,113,0.3)';
+    } else {
+      feedback.textContent = `Only ${count} ${label} found - try a different container`;
+      feedback.style.color = '#f39c12';
+      feedback.style.background = 'rgba(243,156,18,0.1)';
+      feedback.style.border = '1px solid rgba(243,156,18,0.3)';
+    }
+
+    feedback.style.display = 'block';
+    // Auto-hide after 5 seconds
+    setTimeout(() => { if (feedback) feedback.style.display = 'none'; }, 5000);
+  }
+
+  populateTableHeaders(headers) {
+    // Use the enhanced column panel for detected headers
+    // Find the row count from the feedback or default
+    const rowCount = this._lastTableRowCount || 0;
+    this.showDetectedColumns(headers, rowCount);
+  }
+
+  // ─── Messaging ─────────────────────────────────────────────────────────────
+
+  sendMessage(type, payload) {
+    return chrome.runtime.sendMessage({ type, payload });
+  }
+}
+
+// ─── Extend DashboardController to handle blocks in timeline ─────────────────
+
+DashboardController.prototype.addBlockToTimeline = function(block, skipDataPush) {
+  // Add block to the data array so exports can access it (unless loading existing data)
+  if (!skipDataPush) {
+    // Check if we need to insert at a specific position
+    if (this._insertAfterEventId) {
+      const idx = this.events.findIndex(e => (e.id || e.timestamp) === this._insertAfterEventId);
+      if (idx !== -1) {
+        this.events.splice(idx + 1, 0, block);
+      } else {
+        this.events.push(block);
+      }
+      this._insertAfterEventId = null;
+      // Re-render entire timeline to reflect new position
+      this.renderTimeline(this.events);
+      this.updateStats();
+      return;
+    } else {
+      this.events.push(block);
+    }
+    this.updateStats();
+  }
+
+  const list = document.getElementById('timeline-list');
+  const empty = list.querySelector('.empty-state');
+  if (empty) empty.remove();
+
+  const item = document.createElement('div');
+  item.className = 'timeline-item timeline-block';
+  item.setAttribute('data-type', 'block');
+  item.setAttribute('data-block-type', block.blockType);
+
+  const step = block.stepNumber || this.events.length;
+  const label = this.getBlockLabel(block);
+  const branchInfo = this.getBlockBranchInfo(block);
+
+  item.innerHTML = `
+    <span class="timeline-step">${step}</span>
+    <div class="timeline-details">
+      <span class="timeline-type block-type-${block.blockType}">${label}</span>
+      <span class="timeline-target">${branchInfo}</span>
+    </div>
+    <div class="step-actions">
+      <button class="move-step-btn move-up-btn" title="Move up">&#9650;</button>
+      <button class="move-step-btn move-down-btn" title="Move down">&#9660;</button>
+      <button class="delete-step-btn" title="Delete this block">&#128465;</button>
+    </div>
+  `;
+
+  // Attach move/delete handlers for the block
+  const blockId = block.id || block.timestamp;
+  item.querySelector('.move-up-btn').addEventListener('click', (e) => {
+    e.stopPropagation();
+    this.moveEvent(blockId, 'up');
+  });
+  item.querySelector('.move-down-btn').addEventListener('click', (e) => {
+    e.stopPropagation();
+    this.moveEvent(blockId, 'down');
+  });
+  item.querySelector('.delete-step-btn').addEventListener('click', (e) => {
+    e.stopPropagation();
+    this.deleteEvent(blockId, item);
+  });
+
+  // No nested branches — blocks are flat markers now
+
+  list.appendChild(item);
+  list.scrollTop = list.scrollHeight;
+};
+
+DashboardController.prototype.getBlockLabel = function(block) {
+  if (block.blockType === 'condition') {
+    const stmt = (block.config && block.config.statement) || 'if';
+    if (stmt === 'close') return '}';
+    if (stmt === 'elseif') return '} ELSE IF {';
+    if (stmt === 'else') return '} ELSE {';
+    return 'IF {';
+  }
+  switch (block.blockType) {
+    case 'loop': return 'LOOP';
+    case 'tableSelect': return 'TABLE SELECT';
+    default: return 'BLOCK';
+  }
+};
+
+DashboardController.prototype.getBlockBranchInfo = function(block) {
+  const cfg = block.config;
+  if (block.blockType === 'condition') {
+    const stmt = cfg.statement || 'if';
+    if (stmt === 'close') return 'close statement';
+    if (stmt === 'else') return '';
+    if (cfg.conditionType === 'dataDriven' || cfg.check === 'dataDriven') {
+      const op = cfg.operator === '==' ? '==' : cfg.operator === '!=' ? '!=' : cfg.operator;
+      return `data.get("${cfg.variable || '?'}") ${op} "${cfg.value || '?'}"`;
+    } else if (cfg.check === 'textContains') {
+      return `element "${cfg.locator || '?'}" contains "${cfg.textValue || cfg.value || '?'}"`;
+    } else if (cfg.check === 'else') {
+      return '';
+    } else {
+      return `element exists: "${cfg.locator || '?'}"`;
+    }
+  } else if (block.blockType === 'loop') {
+    if (cfg.loopType === 'repeatN') return `repeat ${cfg.count || 5} times`;
+    if (cfg.match && cfg.match.value) return `find item where ${cfg.match.operator || 'contains'} "${cfg.match.value}"`;
+    return `iterate: ${cfg.container || '?'}`;
+  } else if (block.blockType === 'tableSelect') {
+    const crits = (cfg.criteria || []).map(cr => `${cr.columnLocator} ${cr.operator} "${cr.value}"`).join(', ');
+    return crits || 'table row match';
+  }
+  const counts = Object.entries(block.branches)
+    .map(([name, steps]) => `${name}: ${steps.length} steps`)
+    .join(', ');
+  return counts;
+};
+
+DashboardController.prototype.getBranchDisplayName = function(blockType, branchName) {
+  const names = {
+    condition: { then: 'THEN', else: 'ELSE' },
+    loop: { body: 'Loop Body', noMatch: 'No Match' },
+    tableSelect: { body: 'Match Action', noMatch: 'No Match' },
+  };
+  return (names[blockType] && names[blockType][branchName]) || branchName;
+};
+
+// Initialize the control flow controller
+const controlFlowCtrl = new ControlFlowController(dashboard);
+window.controlFlowCtrl = controlFlowCtrl;

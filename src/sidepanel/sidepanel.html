@@ -79,6 +79,187 @@
             <span class="stat-label">Pages</span>
           </div>
         </div>
+
+        <!-- Logic Toolbar -->
+        <div class="logic-toolbar" id="logic-toolbar">
+          <span class="logic-toolbar-label">Logic:</span>
+          <button class="logic-btn" id="btn-add-condition" title="Add If/Else condition">
+            <span class="logic-icon">&#9888;</span>
+            <span>If / Else</span>
+          </button>
+          <button class="logic-btn" id="btn-add-loop" title="Add Loop (find matching item)">
+            <span class="logic-icon">&#128260;</span>
+            <span>Loop</span>
+          </button>
+          <button class="logic-btn" id="btn-add-table-select" title="Select row from table by criteria">
+            <span class="logic-icon">&#128203;</span>
+            <span>Table Select</span>
+          </button>
+        </div>
+
+        <!-- Control Flow Active Banner -->
+        <div class="control-flow-banner" id="control-flow-banner" style="display:none;">
+          <div class="cf-banner-header">
+            <span class="cf-banner-icon" id="cf-banner-icon">&#9888;</span>
+            <span class="cf-banner-title" id="cf-banner-title">Recording THEN branch...</span>
+            <button class="cf-banner-close" id="cf-banner-end" title="End block">&#10006;</button>
+          </div>
+          <div class="cf-banner-actions" id="cf-banner-actions">
+            <!-- Dynamic buttons inserted by JS -->
+          </div>
+          <div class="cf-banner-depth" id="cf-banner-depth"></div>
+          <!-- Manual Step Insertion -->
+          <div class="cf-manual-step" id="cf-manual-step">
+            <div class="cf-manual-step-header">
+              <span class="cf-manual-step-title">Add Step Manually:</span>
+            </div>
+            <div class="cf-manual-step-form">
+              <select id="cf-manual-action" class="cf-manual-input">
+                <option value="click">Click</option>
+                <option value="type">Type / Enter text</option>
+                <option value="select">Select dropdown</option>
+                <option value="checkbox">Check / Uncheck</option>
+                <option value="keypress">Key press</option>
+                <option value="navigation">Navigate to URL</option>
+              </select>
+              <input type="text" id="cf-manual-locator" class="cf-manual-input" placeholder="Element locator (XPath/CSS/#id)" />
+              <button class="cf-pick-btn" id="cf-manual-pick" title="Pick element from page">&#127919;</button>
+              <input type="text" id="cf-manual-value" class="cf-manual-input" placeholder="Value (for type/select/url)" style="display:none;" />
+              <button class="primary-btn cf-manual-add-btn" id="cf-manual-add-btn">+ Add Step</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Control Flow Setup Wizard -->
+        <div class="control-flow-wizard" id="cf-wizard" style="display:none;">
+          <!-- Condition Wizard -->
+          <div class="cf-wizard-step" id="cf-wizard-condition" style="display:none;">
+            <h3>Add Condition (If / Else)</h3>
+            <div class="cf-wizard-field">
+              <label>Condition type:</label>
+              <select id="cf-condition-check">
+                <option value="elementExists">Element exists</option>
+                <option value="elementVisible">Element is visible</option>
+                <option value="elementEnabled">Element is enabled</option>
+                <option value="textContains">Text contains</option>
+                <option value="attributeEquals">Attribute equals</option>
+                <option value="elementCount">Element count</option>
+              </select>
+            </div>
+            <div class="cf-wizard-field">
+              <label>Element locator (XPath/CSS):</label>
+              <input type="text" id="cf-condition-locator" placeholder="//button[@id='submit']" />
+              <button class="cf-pick-btn" id="cf-condition-pick" title="Pick element from page">&#127919; Pick</button>
+            </div>
+            <div class="cf-wizard-field cf-condition-value-row" id="cf-condition-value-row" style="display:none;">
+              <label>Match value:</label>
+              <input type="text" id="cf-condition-value" placeholder="e.g. Submit, 35%, Pending" />
+            </div>
+            <div class="cf-wizard-actions">
+              <button class="primary-btn" id="cf-condition-start">Start Recording</button>
+              <button class="secondary-btn" id="cf-condition-cancel">Cancel</button>
+            </div>
+          </div>
+
+          <!-- Loop Wizard -->
+          <div class="cf-wizard-step" id="cf-wizard-loop" style="display:none;">
+            <h3>Add Loop</h3>
+            <div class="cf-wizard-field">
+              <label>Loop type:</label>
+              <select id="cf-loop-type">
+                <option value="findMatch">Find first matching item</option>
+                <option value="allMatches">Act on all matching items</option>
+                <option value="repeatN">Repeat N times</option>
+                <option value="repeatUntil">Repeat until element gone</option>
+              </select>
+            </div>
+            <div class="cf-wizard-field" id="cf-loop-container-row">
+              <label>Container locator:</label>
+              <input type="text" id="cf-loop-container" placeholder="//div[@class='product-grid']" />
+              <button class="cf-pick-btn" id="cf-loop-container-pick" title="Pick container from page">&#127919; Pick</button>
+            </div>
+            <div class="cf-wizard-field" id="cf-loop-item-row">
+              <label>Item locator (relative to container):</label>
+              <input type="text" id="cf-loop-item" placeholder=".//div[contains(@class,'product-card')]" />
+              <button class="cf-pick-btn" id="cf-loop-item-pick" title="Pick one item from page">&#127919; Pick</button>
+            </div>
+            <div class="cf-wizard-field" id="cf-loop-match-row">
+              <label>Match element (relative to item):</label>
+              <input type="text" id="cf-loop-match-locator" placeholder=".//span[@class='discount']" />
+              <button class="cf-pick-btn" id="cf-loop-match-pick" title="Pick text element to match on">&#127919; Pick</button>
+            </div>
+            <div class="cf-wizard-field" id="cf-loop-match-value-row">
+              <label>Match condition:</label>
+              <div class="cf-inline-group">
+                <select id="cf-loop-match-operator">
+                  <option value="contains">contains</option>
+                  <option value="equals">equals</option>
+                  <option value="startsWith">starts with</option>
+                  <option value="endsWith">ends with</option>
+                  <option value="greaterThan">greater than</option>
+                  <option value="lessThan">less than</option>
+                </select>
+                <input type="text" id="cf-loop-match-value" placeholder="35%" />
+              </div>
+            </div>
+            <div class="cf-wizard-field" id="cf-loop-count-row" style="display:none;">
+              <label>Repeat count:</label>
+              <input type="number" id="cf-loop-count" min="1" max="1000" value="5" />
+            </div>
+            <div class="cf-wizard-actions">
+              <button class="primary-btn" id="cf-loop-start">Start Recording</button>
+              <button class="secondary-btn" id="cf-loop-cancel">Cancel</button>
+            </div>
+          </div>
+
+          <!-- Table Select Wizard -->
+          <div class="cf-wizard-step" id="cf-wizard-table" style="display:none;">
+            <h3>Select from Table</h3>
+            <div class="cf-wizard-field">
+              <label>Table locator:</label>
+              <input type="text" id="cf-table-locator" placeholder="//table[@id='orderList']" />
+              <button class="cf-pick-btn" id="cf-table-pick" title="Pick table from page">&#127919; Pick</button>
+            </div>
+            <div class="cf-wizard-field">
+              <label>Row locator (relative to table):</label>
+              <input type="text" id="cf-table-row" placeholder=".//tbody/tr" />
+            </div>
+            <div class="cf-wizard-field">
+              <label>Criteria logic:</label>
+              <select id="cf-table-logic">
+                <option value="AND">All conditions must match (AND)</option>
+                <option value="OR">Any condition matches (OR)</option>
+              </select>
+            </div>
+            <div class="cf-table-criteria" id="cf-table-criteria">
+              <div class="cf-table-criterion" data-index="0">
+                <input type="text" class="cf-table-col-locator" placeholder="Column locator: .//td[3]" />
+                <select class="cf-table-col-operator">
+                  <option value="equals">equals</option>
+                  <option value="contains">contains</option>
+                  <option value="startsWith">starts with</option>
+                  <option value="greaterThan">greater than</option>
+                  <option value="lessThan">less than</option>
+                  <option value="notEquals">not equals</option>
+                </select>
+                <input type="text" class="cf-table-col-value" placeholder="Value" />
+              </div>
+            </div>
+            <button class="secondary-btn cf-table-add-criterion" id="cf-table-add-criterion">+ Add Criterion</button>
+            <div class="cf-wizard-field">
+              <label>Action:</label>
+              <select id="cf-table-action">
+                <option value="firstMatch">Act on first matching row</option>
+                <option value="allMatches">Act on all matching rows</option>
+              </select>
+            </div>
+            <div class="cf-wizard-actions">
+              <button class="primary-btn" id="cf-table-start">Start Recording</button>
+              <button class="secondary-btn" id="cf-table-cancel">Cancel</button>
+            </div>
+          </div>
+        </div>
+
         <div class="timeline-list" id="timeline-list">
           <div class="empty-state">
             <p>No events recorded yet.</p>

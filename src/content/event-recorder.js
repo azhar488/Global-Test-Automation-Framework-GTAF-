@@ -19,6 +19,20 @@
       this.lastTypingId = null;
       this.TYPING_DEBOUNCE = 1200;
       this._userTypedFields = new Set(); // Track fields user actually typed in
+
+      // Control flow state
+      this.controlFlowMode = null; // null | { mode, blockType, blockId }
+    }
+
+    // ─── Control Flow Mode ─────────────────────────────────────────────────────
+
+    setControlFlowMode(modeState) {
+      this.controlFlowMode = modeState && modeState.mode ? modeState : null;
+      console.log('[KIRO] Control flow mode:', this.controlFlowMode ? this.controlFlowMode.mode : 'none');
+    }
+
+    isInControlFlow() {
+      return this.controlFlowMode !== null && this.controlFlowMode.mode !== null;
     }
 
     start() {
@@ -419,6 +433,8 @@
       if (!this.isRecording || this.isPaused) return false;
       if (!e || !e.target) return false;
       if (e.target.closest && e.target.closest('[data-kiro-recorder]')) return false;
+      if (e.target.closest && e.target.closest('[data-kiro-pick-highlight]')) return false;
+      if (e.target.id === 'kiro-pick-overlay') return false;
       return true;
     }
 
@@ -507,6 +523,15 @@
     sendEvent(eventData) {
       eventData.url = window.location.href;
       eventData.timestamp = Date.now();
+
+      // Attach control flow context if active
+      if (this.isInControlFlow()) {
+        eventData.controlFlow = {
+          mode: this.controlFlowMode.mode,
+          blockType: this.controlFlowMode.blockType,
+          blockId: this.controlFlowMode.blockId,
+        };
+      }
 
       // Use #optionTitle as the page title if available (X3 screen title)
       // Check current frame, then parent frames (title may be in a different frame)

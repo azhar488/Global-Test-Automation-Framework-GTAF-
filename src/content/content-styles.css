@@ -10,3 +10,27 @@
   outline: 2px dashed #e94560 !important;
   outline-offset: 2px !important;
 }
+
+/* Pick mode highlight */
+[data-kiro-pick-highlight] {
+  outline: 3px solid #4ecdc4 !important;
+  outline-offset: 2px !important;
+  cursor: crosshair !important;
+}
+
+/* Control flow recording indicator */
+#kiro-cf-indicator {
+  pointer-events: none;
+  user-select: none;
+  animation: kiro-cf-blink 2s infinite;
+}
+
+@keyframes kiro-cf-blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.6; }
+}
+
+/* Pick mode overlay */
+#kiro-pick-overlay {
+  cursor: crosshair !important;
+}
